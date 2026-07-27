@@ -134,3 +134,9 @@ FINAL FLOW
                                                               │
                                                               ▼
                                                         nginx-pod-2
+
+"How does a ClusterIP Service send traffic to Pods?"
+- "The Service gets a virtual ClusterIP. kube-proxy watches the API server for Services and EndpointSlices, then programs Linux iptables rules. When traffic reaches the ClusterIP, those rules match the Service, choose one of the backend Pod endpoints, perform destination NAT (DNAT) to the selected Pod IP and port, and forward the packet."
+
+
+
