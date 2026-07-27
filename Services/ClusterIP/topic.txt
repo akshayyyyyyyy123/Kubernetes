@@ -1,0 +1,136 @@
+* IP TABLES
+
+- iptables is a Linux command-line firewall tool used to control and secure network traffic by defining packet-filtering rules.
+- It controls incoming, outgoing and forwarded traffic based on IP addresses, ports and protocols.
+- Uses tables, chains, and rules to define how network packets should be handled.
+- Performs actions such as ACCEPT, DROP, REJECT, or FORWARD when packets match rules.
+- Helps protect servers and networks by allowing trusted traffic and blocking unauthorized access.
+
+It contains rules like: 
+                                IF packet matches this condition
+                                              ↓
+                                        Do this action
+
+
+                                IF destination = 10.107.210.106
+                                              ↓
+                                    Forward to another chain
+
+* Core Components of iptables
+
+i) Tables 
+ii) Chains
+iii) Rules
+iv) Targets
+
+Refer - https://www.geeksforgeeks.org/linux-unix/iptables-command-in-linux-with-examples/
+
+
+* Important Command
+  # sudo iptables -t nat -L KUBE-SERVICES -n
+
+
+╰─ minikube ssh                                                                                                                                        ─╯
+docker@minikube:~$ sudo iptables -t nat -L KUBE-SERVICES -n --line-numbers
+Chain KUBE-SERVICES (2 references)
+num  target     prot opt source               destination
+1    KUBE-SVC-2LGLSIXP4TMEMYBA  tcp  --  0.0.0.0/0            10.107.210.106       /* devops/nginx-service cluster IP */
+2    KUBE-SVC-TCOU7JCQXEZGVUNU  udp  --  0.0.0.0/0            10.96.0.10           /* kube-system/kube-dns:dns cluster IP */
+3    KUBE-SVC-ERIFXISQEP7F7OF4  tcp  --  0.0.0.0/0            10.96.0.10           /* kube-system/kube-dns:dns-tcp cluster IP */
+4    KUBE-SVC-JD5MR3NA4I4DYORP  tcp  --  0.0.0.0/0            10.96.0.10           /* kube-system/kube-dns:metrics cluster IP */
+5    KUBE-SVC-NPX46M4PTMTKRN6Y  tcp  --  0.0.0.0/0            10.96.0.1            /* default/kubernetes:https cluster IP */
+6    KUBE-NODEPORTS  all  --  0.0.0.0/0            0.0.0.0/0            /* kubernetes service nodeports; NOTE: this must be the last rule in this chain */ ADDRTYPE match dst-type LOCAL
+docker@minikube:~$
+
+- Suppose lets say a packet arrives at -> Destination = 10.107.210.106. Linux says, "I don't have any process listening on this IP." Normally it'd drop the packet.
+So Kubernetes has to teach Linux: "Whenever you see this IP, don't drop it. Send it to one of these Pods."... Using iptables.
+
+STEP 01:
+- Imagine a packet arrives like this: Destination IP = 10.107.210.106. Linux checks the KUBE-SERVICES chain. It finds, IF destination == 10.107.210.106 then 
+Jump to KUBE-SVC-2LGLSIXP4TMEMYBA.
+- So KUBE-SERVICES acts like a directory of all Services.
+
+docker@minikube:~$ sudo iptables -t nat -L KUBE-SERVICES -n --line-numbers
+Chain KUBE-SERVICES (2 references)
+num  target     prot opt source               destination
+1    KUBE-SVC-2LGLSIXP4TMEMYBA  tcp  --  0.0.0.0/0            10.107.210.106       /* devops/nginx-service cluster IP */
+2    KUBE-SVC-TCOU7JCQXEZGVUNU  udp  --  0.0.0.0/0            10.96.0.10           /* kube-system/kube-dns:dns cluster IP */
+3    KUBE-SVC-ERIFXISQEP7F7OF4  tcp  --  0.0.0.0/0            10.96.0.10           /* kube-system/kube-dns:dns-tcp cluster IP */
+4    KUBE-SVC-JD5MR3NA4I4DYORP  tcp  --  0.0.0.0/0            10.96.0.10           /* kube-system/kube-dns:metrics cluster IP */
+5    KUBE-SVC-NPX46M4PTMTKRN6Y  tcp  --  0.0.0.0/0            10.96.0.1            /* default/kubernetes:https cluster IP */
+6    KUBE-NODEPORTS  all  --  0.0.0.0/0            0.0.0.0/0            /* kubernetes service nodeports; NOTE: this must be the last rule in this chain */ ADDRTYPE match dst-type LOCAL
+
+
+STEP 02:
+- Here the service has two backend pods.
+docker@minikube:~$ sudo iptables -t nat -L KUBE-SVC-2LGLSIXP4TMEMYBA -n --line-numbers
+Chain KUBE-SVC-2LGLSIXP4TMEMYBA (1 references)
+num  target     prot opt source               destination
+1    KUBE-MARK-MASQ  tcp  -- !10.244.0.0/16        10.107.210.106       /* devops/nginx-service cluster IP */
+2    KUBE-SEP-VIYX552ZM2YDSXBA  all  --  0.0.0.0/0            0.0.0.0/0            /* devops/nginx-service -> 10.244.0.109:80 */ statistic mode random probability 0.50000000000
+3    KUBE-SEP-2LDS4FDRRODPQODJ  all  --  0.0.0.0/0            0.0.0.0/0            /* devops/nginx-service -> 10.244.0.110:80 */
+
+
+STEP 03: 
+- Each Pod gets its own KUBE-SEP chain.
+- nginx-pod-1 : 10.244.0.110
+- nginx-pod-2 : 10.244.0.109
+- kubeproxy creates all these.
+
+STEP 04:
+- statistic mode random probability 0.50000000000
+- Since you have 2 Pods, kube-proxy is effectively saying: 50% chance of Pod1 and 50% chance of Pod2.
+- That's how Kubernetes load-balances between the Pods.
+- If you had 4 Pods, you'd see different probabilities and chains to distribute traffic across all four.
+
+                                                     Packet arrives
+                                                 Destination = 10.107.210.106
+                                                            │
+                                                            ▼
+                                                   KUBE-SERVICES Chain
+                                                            │
+                                                            ▼
+                                                 KUBE-SVC-2LGLSIXP4TMEMYBA
+                                                            │
+                                           ┌────────────────┴────────────────┐
+                                           │                                 │
+                                    50% probability                  Remaining traffic
+                                           │                                 │
+                                           ▼                                 ▼
+                               KUBE-SEP-VIYX552ZM2YDSXBA       KUBE-SEP-2LDS4FDRRODPQODJ
+                                           │                                 │
+                                           ▼                                 ▼
+                                   10.244.0.109:80                  10.244.0.110:80
+                                           │                                 │
+                                           ▼                                 ▼
+                                     nginx-pod-2                     nginx-pod-1
+
+
+FINAL FLOW
+
+                                                        Another Pod
+                                                              │
+                                                              ▼
+                                                        curl http://10.107.210.106
+                                                              │
+                                                              ▼
+                                                        Linux checks KUBE-SERVICES
+                                                              │
+                                                              ▼
+                                                        Matches:
+                                                        10.107.210.106
+                                                              │
+                                                              ▼
+                                                        Jump to:
+                                                        KUBE-SVC-2LGLSIXP4TMEMYBA
+                                                              │
+                                                              ▼
+                                                        Randomly selects:
+                                                        KUBE-SEP-VIYX552ZM2YDSXBA
+                                                              │
+                                                              ▼
+                                                        DNAT:
+                                                        10.244.0.109:80
+                                                              │
+                                                              ▼
+                                                        nginx-pod-2
