@@ -1,0 +1,131 @@
+1. Kubernetes ClusterIP Service
+- ClusterIP is the default Kubernetes Service type that exposes an application using a stable virtual IP address, allowing communication only within the 
+Kubernetes cluster. It provides a fixed endpoint for clients even though the backend Pod IPs may change.
+
+----------------------------------------------------------------------------------------------------------------------------------
+
+2. Why do we need ClusterIP?
+- Pods are ephemeral. 
+- Pod-1 : 10.244.0.10. If the same pod crashes, then new pod-2 comes up with a diff IP (10.244.0.25) and if another application was calling 10.244.0.10, it will 
+fail. 
+- Instead Kubernetes creates nginx-service with a stable virtual ip - 10.107.210.106. Now Now every application calls : http://nginx-service 
+or http://10.107.210.106 and no one need to know pod ip.
+
+----------------------------------------------------------------------------------------------------------------------------------
+
+3. Is ClusterIP a real IP?
+- It is a virtual IP. 
+- No Pod owns this IP.
+- No container listens on this IP.
+- It exists because Kubernetes programs Linux networking rules using kube-proxy.
+
+----------------------------------------------------------------------------------------------------------------------------------
+
+4. Who assigns the ClusterIP?
+- Kubernetes API Server assigns ClusterIP.
+- Whenever you create service, the API Server allocates an IP from the Service CIDR.
+- Example Service CIDR - 10.96.0.0/12... Your Service gets - 10.107.210.106
+
+----------------------------------------------------------------------------------------------------------------------------------
+
+5. Who assigns Pod IPs?
+- The CNI Plugin.
+- Examples include : Calico, Cilium, Flannel, AWS VPC CNI (EKS)
+
+----------------------------------------------------------------------------------------------------------------------------------
+
+6. How does the Service know which Pods belong to it?
+- Using labels and selectors.
+- The Service continuously matches Pods whose labels satisfy its selector.
+- Pod
+labels:
+  app: nginx
+- Service
+selector:
+  app: nginx
+
+----------------------------------------------------------------------------------------------------------------------------------
+
+7. Who creates EndpointSlice?
+- The EndpointSlice Controller (part of the kube-controller-manager)
+- It watches : Services and Matching Pods
+- Then creates EndpointSlice -> 10.244.0.109 , 10.244.0.110 (Pod IPs)
+
+----------------------------------------------------------------------------------------------------------------------------------
+
+8. Does kube-proxy query EndpointSlice for every request?
+- No. It watches the Kubernetes API. Whenever EndpointSlices change, kube-proxy updates Linux networking rules.
+- kube-proxy watches Services, EndpointSlices and and programs Linux networking rules using iptables, IPVS, nftables depending on configuration.
+- These rules translate the ClusterIP into one of the backend Pod IPs.
+
+----------------------------------------------------------------------------------------------------------------------------------
+
+9. Does traffic flow through EndpointSlice?
+- No. EndpointSlice is only metadata. 
+- It stores PodA, PodB, PodC . kube-proxy reads this information and creates forwarding rules. 
+- The packet never flows through the EndpointSlice object.
+
+----------------------------------------------------------------------------------------------------------------------------------
+
+10. Can external users access a ClusterIP?
+- No.
+- ClusterIP is only reachable inside the Kubernetes cluster.
+- Examples
+    ✅ Another Pod
+    ✅ kube-system Pods
+    ❌ Browser
+    ❌ Internet
+    ❌ Lambda (even in the same VPC, unless it is part of the Kubernetes networking path)
+
+----------------------------------------------------------------------------------------------------------------------------------
+
+11. Why is it called ClusterIP?
+- Because it is accessible only within the cluster.
+- It is intended for east-west traffic (service-to-service communication), not north-south traffic (external clients).
+- All internal services communicate using ClusterIP.
+- Only the Ingress/LoadBalancer is exposed externally.
+
+----------------------------------------------------------------------------------------------------------------------------------
+
+12. Advantages
+- Stable endpoint despite Pod recreation
+- Built-in load balancing across Pods
+- Service discovery using DNS
+- Decouples clients from Pod IPs
+- Default Service type
+- Enables internal microservice communication
+
+Limitations
+- Not accessible from outside the cluster
+- Cannot directly expose applications to end users
+- Requires NodePort, LoadBalancer, or Ingress for external access
+
+----------------------------------------------------------------------------------------------------------------------------------
+
+13. Interview Flow 
+
+"ClusterIP is the default Kubernetes Service type used for internal communication between applications running inside the cluster. Since Pods are ephemeral
+and their IP addresses change, Kubernetes provides a stable virtual IP called the ClusterIP. The API Server allocates this IP from the Service CIDR when 
+the Service is created. The Service identifies backend Pods using label selectors, and the EndpointSlice Controller creates EndpointSlices containing the
+matching Pod IPs. kube-proxy watches Services and EndpointSlices and programs Linux networking rules using iptables, IPVS, or nftables. When traffic 
+reaches the ClusterIP, those rules translate the virtual IP to one of the backend Pod IPs, providing load balancing and service discovery. ClusterIP is only 
+reachable within the cluster and is commonly used for communication between microservices."
+
+----------------------------------------------------------------------------------------------------------------------------------
+
+⭐ Interview Questions 
+Why do we need a ClusterIP Service?
+Why is a ClusterIP called a virtual IP?
+Who assigns the ClusterIP?
+Who assigns Pod IPs?
+How does a Service discover Pods?
+What is the role of EndpointSlice?
+Who creates EndpointSlices?
+What is kube-proxy and what does it do?
+Does traffic pass through EndpointSlice?
+What happens when a Pod is deleted?
+Can a Lambda in the same VPC access a ClusterIP? Why or why not?
+Why is ClusterIP the default Service type?
+How does Kubernetes load-balance requests across multiple Pods?
+What is the difference between a Pod IP and a ClusterIP?
+How is ClusterIP different from NodePort and LoadBalancer?
