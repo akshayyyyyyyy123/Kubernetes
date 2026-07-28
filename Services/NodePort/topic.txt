@@ -1,0 +1,28 @@
+KUBE-NODEPORTS
+- Responsible for finding the correct Service from the NodePort.
+
+KUBE-SERVICES
+- Responsible for Finding the correct backend Pods.
+
+KUBE-SEP
+- Responsible for Sending the packet to one specific Pod (using DNAT).
+
+
+
+**** How does a NodePort Service work internally? ****
+"When a NodePort Service is created, Kubernetes allocates a ClusterIP and a NodePort. kube-proxy watches the Service and EndpointSlice objects and programs iptables rules.
+Traffic arriving at <NodeIP>:<NodePort> matches the KUBE-NODEPORTS chain, which forwards it to the corresponding Service chain (KUBE-SVC). The Service chain selects one of
+the backend endpoints using load-balancing rules and jumps to the endpoint chain (KUBE-SEP). The endpoint chain performs DNAT, rewriting the destination IP from the
+Service's ClusterIP to the selected Pod IP and port. The packet is then delivered directly to that Pod."
+
+
+- What is a NodePort Service?
+- How is NodePort different from ClusterIP?
+- Why does NodePort still have a ClusterIP?
+- Who opens the NodePort on the node?
+- What is the default NodePort range?
+- Can every node receive NodePort traffic?
+- What happens if the Pod is on another node?
+- How does kube-proxy forward NodePort traffic?
+- How can you verify NodePort rules using iptables?
+- Why is NodePort generally not preferred in production?
