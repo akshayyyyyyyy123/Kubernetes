@@ -1,0 +1,132 @@
+╰─ kubectl get pods -n nodeport-ns -o wide                                                                                                
+NAME          READY   STATUS    RESTARTS   AGE   IP             NODE       NOMINATED NODE   READINESS GATES
+nginx-pod-1   1/1     Running   0          25m   10.244.0.118   minikube   <none>           <none>
+nginx-pod-2   1/1     Running   0          25m   10.244.0.117   minikube   <none>           <none>
+
+  
+╰─ kubectl get svc -n nodeport-ns -o wide                                                                                                
+NAME               TYPE       CLUSTER-IP      EXTERNAL-IP   PORT(S)          AGE   SELECTOR
+nodeport-service   NodePort   10.106.191.21   <none>        1733:32111/TCP   28m   app=nginx
+
+
+╰─ kubectl get endpoints -n nodeport-ns                                                                                                  
+Warning: v1 Endpoints is deprecated in v1.33+; use discovery.k8s.io/v1 EndpointSlice
+NAME               ENDPOINTS                         AGE
+nodeport-service   10.244.0.117:80,10.244.0.118:80   28m
+
+
+╰─ minikube ip                                                                                                                           
+192.168.49.2
+
+# to expose the nodeport svc to the external world
+# minikube service nodeport-service -n nodeport-ns --url                                                                                
+http://127.0.0.1:49767
+
+# kubectl port-forward svc/nodeport-service -n nodeport-ns 8080:1733                                                                    
+Forwarding from 127.0.0.1:8080 -> 80
+Forwarding from [::1]:8080 -> 80
+Handling connection for 8080
+Handling connection for 8080
+
+
+STEP 01: Flow
+
+docker@minikube:~$ sudo iptables -t nat -L KUBE-SERVICES -n --line-numbers
+Chain KUBE-SERVICES (2 references)
+num  target     prot opt source               destination
+1    KUBE-SVC-KMA464CPF6AVFFVI  tcp  --  0.0.0.0/0            10.106.191.21        /* nodeport-ns/nodeport-service cluster IP */
+2    KUBE-SVC-TCOU7JCQXEZGVUNU  udp  --  0.0.0.0/0            10.96.0.10           /* kube-system/kube-dns:dns cluster IP */
+3    KUBE-SVC-ERIFXISQEP7F7OF4  tcp  --  0.0.0.0/0            10.96.0.10           /* kube-system/kube-dns:dns-tcp cluster IP */
+4    KUBE-SVC-JD5MR3NA4I4DYORP  tcp  --  0.0.0.0/0            10.96.0.10           /* kube-system/kube-dns:metrics cluster IP */
+5    KUBE-SVC-NPX46M4PTMTKRN6Y  tcp  --  0.0.0.0/0            10.96.0.1            /* default/kubernetes:https cluster IP */
+6    KUBE-NODEPORTS  all  --  0.0.0.0/0            0.0.0.0/0            /* kubernetes service nodeports; NOTE: this must be the last rule in this chain */ ADDRTYPE match dst-type LOCAL
+docker@minikube:~$
+
+Meaning - If a TCP packet comes from ANY source (0.0.0.0/0) AND its destination is 10.106.191.21 (the ClusterIP), then jump to the KUBE-SVC-KMA464CPF6AVFFVI chain.
+Notice it doesn't forward directly to the Service IP. The packet is already destined for the Service IP. The rule simply says => Packet destined for ClusterIP -> Execute Service chain
+
+  
+STEP 02:
+You have: 
+    Chain KUBE-SVC-KMA464CPF6AVFFVI
+    1  KUBE-MARK-MASQ
+    2  KUBE-SEP-6H3YF2LBDAFAF75P
+    3  KUBE-SEP-PM6ZBDUB5W4A3VJL
+
+Rule 1: KUBE-MARK-MASQ
+Source = !10.244.0.0/16
+Destination = 10.106.191.21
+
+Meaning -> If the request did not originate from the Pod network (!10.244.0.0/16) and is going to the ClusterIP, mark it for SNAT (masquerading) later.
+
+
+Rule 2: KUBE-SEP-6H3YF2LBDAFAF75P
+statistic mode random
+probability 0.5
+
+Meaning -> Randomly choose Pod-1 (10.244.0.117:80) with a 50% probability.
+
+Rule 3: KUBE-SEP-PM6ZBDUB5W4A3VJL
+Meaning -> If Rule 2 didn't match (the other 50% of requests), send the packet to Pod-2 (10.244.0.118:80).
+
+Run
+# sudo iptables -t nat -L KUBE-SEP-6H3YF2LBDAFAF75P -n --line-numbers
+# sudo iptables -t nat -L KUBE-SEP-PM6ZBDUB5W4A3VJL -n --line-numbers
+
+OUTPUT
+Chain KUBE-SEP-6H3YF2LBDAFAF75P
+1  KUBE-MARK-MASQ
+2  DNAT  tcp  --  0.0.0.0/0  0.0.0.0/0  to:10.244.0.117:80
+Meaning -> Rewrite the packet's destination IP from the ClusterIP (10.106.191.21) to the actual Pod IP (10.244.0.117:80). This is called Destination NAT (DNAT).
+
+
+docker@minikube:~$ sudo iptables -t nat -L KUBE-SEP-6H3YF2LBDAFAF75P -n --line-numbers
+Chain KUBE-SEP-6H3YF2LBDAFAF75P (1 references)
+num  target     prot opt source               destination
+1    KUBE-MARK-MASQ  all  --  10.244.0.117         0.0.0.0/0            /* nodeport-ns/nodeport-service */
+2    DNAT       tcp  --  0.0.0.0/0            0.0.0.0/0            /* nodeport-ns/nodeport-service */ tcp to:10.244.0.117:80
+docker@minikube:~$
+
+DNAT is the mechanism that rewrites the destination from a virtual Kubernetes address to the real pod IP so Linux can route the packet to the pod.
+  - Suppose your browser sends: 192.168.49.2:32111
+  - Internally kube-proxy already converted it to: Destination: 10.106.191.21:1733
+  - Now this DNAT rule changes it to: Destination: 10.244.0.117:80
+  - Now Linux knows exactly where to send the packet.
+
+FLOW
+
+                                              Browser
+                                                │
+                                                ▼
+                                            192.168.49.2:32111
+                                                │
+                                                ▼
+                                            KUBE-NODEPORTS
+                                                │
+                                                ▼
+                                            KUBE-EXT
+                                                │
+                                                ▼
+                                            ClusterIP
+                                            10.106.191.21:1733
+                                                │
+                                                ▼
+                                            KUBE-SERVICES
+                                                │
+                                                ▼
+                                            KUBE-SVC
+                                                │
+                                                ├──────────────┐
+                                                │              │
+                                            50%               50%
+                                                ▼              ▼
+                                            KUBE-SEP-1     KUBE-SEP-2
+                                                │              │
+                                                ▼              ▼
+                                            DNAT          DNAT
+                                                │              │
+                                                ▼              ▼
+                                            10.244.0.117 10.244.0.118
+                                                │              │
+                                                ▼              ▼
+                                            nginx         nginx
