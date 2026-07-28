@@ -33,7 +33,7 @@ Refer - https://www.geeksforgeeks.org/linux-unix/iptables-command-in-linux-with-
 ╰─ minikube ssh                                                                                                                                        ─╯
 docker@minikube:~$ sudo iptables -t nat -L KUBE-SERVICES -n --line-numbers
 Chain KUBE-SERVICES (2 references)
-num  target     prot opt source               destination
+num            target           prot opt  source               destination
 1    KUBE-SVC-2LGLSIXP4TMEMYBA  tcp  --  0.0.0.0/0            10.107.210.106       /* devops/nginx-service cluster IP */
 2    KUBE-SVC-TCOU7JCQXEZGVUNU  udp  --  0.0.0.0/0            10.96.0.10           /* kube-system/kube-dns:dns cluster IP */
 3    KUBE-SVC-ERIFXISQEP7F7OF4  tcp  --  0.0.0.0/0            10.96.0.10           /* kube-system/kube-dns:dns-tcp cluster IP */
@@ -52,7 +52,7 @@ Jump to KUBE-SVC-2LGLSIXP4TMEMYBA.
 
 docker@minikube:~$ sudo iptables -t nat -L KUBE-SERVICES -n --line-numbers
 Chain KUBE-SERVICES (2 references)
-num  target     prot opt source               destination
+num           target            prot opt  source               destination
 1    KUBE-SVC-2LGLSIXP4TMEMYBA  tcp  --  0.0.0.0/0            10.107.210.106       /* devops/nginx-service cluster IP */
 2    KUBE-SVC-TCOU7JCQXEZGVUNU  udp  --  0.0.0.0/0            10.96.0.10           /* kube-system/kube-dns:dns cluster IP */
 3    KUBE-SVC-ERIFXISQEP7F7OF4  tcp  --  0.0.0.0/0            10.96.0.10           /* kube-system/kube-dns:dns-tcp cluster IP */
@@ -65,7 +65,7 @@ STEP 02:
 - Here the service has two backend pods.
 docker@minikube:~$ sudo iptables -t nat -L KUBE-SVC-2LGLSIXP4TMEMYBA -n --line-numbers
 Chain KUBE-SVC-2LGLSIXP4TMEMYBA (1 references)
-num  target     prot opt source               destination
+num       target     prot opt    source               destination
 1    KUBE-MARK-MASQ  tcp  -- !10.244.0.0/16        10.107.210.106       /* devops/nginx-service cluster IP */
 2    KUBE-SEP-VIYX552ZM2YDSXBA  all  --  0.0.0.0/0            0.0.0.0/0            /* devops/nginx-service -> 10.244.0.109:80 */ statistic mode random probability 0.50000000000
 3    KUBE-SEP-2LDS4FDRRODPQODJ  all  --  0.0.0.0/0            0.0.0.0/0            /* devops/nginx-service -> 10.244.0.110:80 */
