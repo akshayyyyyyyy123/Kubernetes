@@ -1,0 +1,180 @@
+*** Kubernetes LoadBalancer Service ***
+
+
+(*) Definition 
+- A LoadBalancer Service is a Kubernetes Service type that exposes an application outside the cluster by provisioning an external load balancer through the 
+underlying cloud provider (AWS, Azure, GCP, etc.).
+- The external load balancer receives internet traffic and forwards it to the Kubernetes cluster, which then routes it to the appropriate backend pods.
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Architecture
+
+                  Internet
+                      |
+                      |
+        +----------------------------+
+        | External Load Balancer     |
+        | (AWS NLB / Azure LB / GCP) |
+        +----------------------------+
+                      |
+                NodePort (32000)
+                      |
+                ClusterIP Service
+             (Virtual Kubernetes IP)
+                      |
+                EndpointSlice
+          -------------------------
+          |                       |
+          |                       |
+     10.244.0.127:80        10.244.0.128:80
+          |                       |
+      nginx Pod 1            nginx Pod 2
+
+
+How it works
+1. A client sends a request to the external Load Balancer.
+2. The Load Balancer forwards the request to one of the Kubernetes nodes using the automatically created NodePort.
+3. kube-proxy (iptables/IPVS) processes the request.
+4. One backend pod is selected from the EndpointSlice.
+5. DNAT rewrites the destination IP and port to the selected pod.
+6. Linux routing forwards the packet to the pod.
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Request Flow
+
+                                           Browser
+                                              |
+                                              |
+                                        External Load Balancer
+                                              |
+                                              |
+                                        NodeIP:32000 (NodePort)
+                                              |
+                                              |
+                                          kube-proxy
+                                              |
+                                              |
+                                           iptables
+                                              |
+                                              |
+                                        Endpoint Selection
+                                              |
+                                              |
+                                            DNAT
+                                              |
+                                              |
+                                        10.244.0.127:80
+                                              |
+                                              |
+                                          nginx Pod
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Why does a LoadBalancer Service still create a NodePort?
+- A LoadBalancer Service is built on top of a NodePort Service.
+- Likewise, the NodePort service is built on the top of cluster IP service.
+- A LoadBalancer Service automatically creates ClusterIP, NodePort and External Load Balancer
+- When a Service is created with => type: LoadBalancer
+- Kubernetes automatically:
+    * Creates a ClusterIP
+    * Creates a NodePort
+    * Requests the cloud provider to provision an external Load Balancer
+- The external Load Balancer forwards traffic to the NodePort running on every Kubernetes node.
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Why was EXTERNAL-IP <pending> in Minikube?
+- Minikube is not a cloud environment.
+- When Kubernetes creates a LoadBalancer Service, it expects a Cloud Controller Manager (CCM) to provision an external Load Balancer.
+- Since Minikube has no cloud provider, no load balancer is created, resulting in: EXTERNAL-IP: <pending>
+
+# kubectl get svc -n nginx-lb -o wide                                                                                                                 
+NAME         TYPE           CLUSTER-IP     EXTERNAL-IP   PORT(S)        AGE   SELECTOR
+lb-service   LoadBalancer   10.109.37.54   <pending>     80:32000/TCP   30m   app=nginx
+
+- Hence running.... # minikube tunnel
+creates a local network tunnel that simulates the behavior of a cloud Load Balancer.
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Cloud Controller Manager (CCM)
+- The Cloud Controller Manager (CCM) is a Kubernetes control plane component that integrates Kubernetes with cloud provider APIs (AWS, Azure, GCP, etc.). 
+It watches Kubernetes resources and performs cloud-specific operations on behalf of the cluster.
+- It's the bridge between Kubernetes and the cloud provider.
+
+                                                Kubernetes
+                                                      |
+                                                      | "I need a Load Balancer"
+                                                      |
+                                                      ▼
+                                                Cloud Controller Manager
+                                                      |
+                                                      | AWS SDK / Azure SDK / GCP APIs
+                                                      |
+                                                      ▼
+                                                Cloud Provider
+
+(*) Why do we need CCM?
+- Kubernetes itself is cloud-agnostic.
+- It doesn't know:
+    * How to create an AWS NLB
+    * How to create an Azure Load Balancer
+    * How to attach EC2 instances
+    * How to allocate a public IP
+    * How to configure AWS health checks
+- Those are cloud-specific operations. Instead of embedding AWS code into Kubernetes, Kubernetes delegates them to the CCM.
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Example: Creating a LoadBalancer Service
+- You run:
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: nginx-lb
+    spec:
+      type: LoadBalancer
+
+Step 1: The API Server stores the Service object, when you run kubectl apply command.
+Step 2: The CCM continuously watches the API Server. It notices: Service Type = LoadBalancer
+Step 3: The CCM calls AWS APIs for creating the load balancer which in-turn creates target groups, configures health checks, registers worker nodes and opens 
+security group rules.
+Step 4: AWS returns abcd123.elb.amazonaws.com. The CCM updates the Service. Now: kubectl get svc which shows : EXTERNAL-IP -> abcd123.elb.amazonaws.com
+
+                                                    ***** Complete Flow *****
+                                                          
+                                                          kubectl apply
+                                                                 |
+                                                                 ▼
+                                                          API Server
+                                                                 |
+                                                                 ▼
+                                                          Cloud Controller Manager
+                                                                 |
+                                                                 ▼
+                                                          AWS API
+                                                                 |
+                                                                 ▼
+                                                          Network Load Balancer
+                                                                 |
+                                                                 ▼
+                                                          Target Group
+                                                                 |
+                                                                 ▼
+                                                          Worker Nodes
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Who creates the AWS Network Load Balancer?
+- The Cloud Controller Manager watches for Kubernetes Services of type LoadBalancer. When it detects one, it calls AWS APIs to provision a Network Load Balancer, 
+configure listeners and target groups, register worker nodes, and update the Service's external endpoint.
+
+One EKS-specific note
+- In modern EKS clusters, you'll often hear about the AWS Load Balancer Controller. It is not the same as the Cloud Controller Manager.
+- Cloud Controller Manager (CCM): Handles core cloud integration such as Service objects of type LoadBalancer (depending on cluster setup) and 
+node-related cloud operations.
+AWS Load Balancer Controller: A separate controller that provisions and manages Application Load Balancers (ALBs) and can also manage Network Load Balancers (NLBs) for Ingress resources and certain Service configurations. This is the controller you'll commonly use with Kubernetes Ingress on EKS.
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------
