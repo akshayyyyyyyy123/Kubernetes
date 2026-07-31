@@ -1,0 +1,15 @@
+## Load balancer service ##
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: lb-service
+  namespace: nginx-lb
+spec:
+  type: LoadBalancer
+  selector:
+    app: nginx
+  ports:
+    - port: 80
+      targetPort: 80
+      nodePort: 32000
