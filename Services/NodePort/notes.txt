@@ -62,3 +62,37 @@ The Service (ClusterIP) is a virtual abstraction. It doesn't exist as a real net
 rules, but for NodePort traffic, the packet is ultimately DNAT'd directly to one of the backend endpoints (pods).The real forwarding target is always the EndpointSlice (pods).
 *******
 
+------------------------------------------------------------------------------------------------------------------------------------------------------
+
+                                                    Browser
+                                                       |
+                                                       | HTTP
+                                                       v
+                                                192.168.49.2:32111
+                                                       |
+                                                       | NodePort
+                                                       v
+                                                    +-------------------------------------------+
+                                                    |             Minikube Node                 |
+                                                    |                                           |
+                                                    | kube-proxy                               |
+                                                    |    |                                      |
+                                                    |    | Programs iptables/IPVS               |
+                                                    |    v                                      |
+                                                    | DNAT                                      |
+                                                    |    |                                      |
+                                                    | ClusterIP Service                         |
+                                                    | 10.106.191.21:1733                        |
+                                                    |    |                                      |
+                                                    | EndpointSlice                             |
+                                                    | ├──10.244.0.121:80                        |
+                                                    | └──10.244.0.119:80                        |
+                                                    |    |                                      |
+                                                    | nginx Pod          nginx Pod              |
+                                                    +-------------------------------------------+
+
+
+
+"The browser sends traffic to the Node IP and NodePort. The packet reaches the node, where kube-proxy has already installed iptables rules for that
+NodePort. The NodePort rule jumps to the Service chain, which uses the Service's EndpointSlice to choose one backend pod. Finally, a DNAT rule 
+rewrites the packet's destination from the Node IP and NodePort to the selected pod's IP and target port, and the Linux kernel routes the packet to that pod."
