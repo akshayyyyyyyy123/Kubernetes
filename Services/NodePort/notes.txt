@@ -1,0 +1,64 @@
+# minikube ip                                                                                                                                         
+192.168.49.2
+
+
+# kubectl get svc -n nodeport-ns -o wide                                                                                                             
+NAME               TYPE       CLUSTER-IP      EXTERNAL-IP   PORT(S)          AGE     SELECTOR
+nodeport-service   NodePort   10.106.191.21   <none>        1733:32111/TCP   2d15h   app=nginx
+
+
+# kubectl get endpoints -n nodeport-ns                                                                                                                
+NAME               ENDPOINTS                         AGE
+nodeport-service   10.244.0.119:80,10.244.0.121:80   2d15h
+
+
+# kubectl get pods -n nodeport-ns -o wide                                                                                                            
+NAME          READY   STATUS    RESTARTS        AGE     IP             NODE       NOMINATED NODE   READINESS GATES
+nginx-pod-1   1/1     Running   1 (2d14h ago)   2d15h   10.244.0.121   minikube   <none>           <none>
+nginx-pod-2   1/1     Running   1 (2d14h ago)   2d15h   10.244.0.119   minikube   <none>           <none>
+
+
+# minikube ssh                                                                                                                                       
+docker@minikube:~$ sudo iptables -t nat -L KUBE-SERVICES -n --line-numbers
+Chain KUBE-SERVICES (2 references)
+num  target     prot opt source               destination
+1    KUBE-SVC-KMA464CPF6AVFFVI  tcp  --  0.0.0.0/0            10.106.191.21        /* nodeport-ns/nodeport-service cluster IP */
+2    KUBE-SVC-NPX46M4PTMTKRN6Y  tcp  --  0.0.0.0/0            10.96.0.1            /* default/kubernetes:https cluster IP */
+3    KUBE-SVC-TCOU7JCQXEZGVUNU  udp  --  0.0.0.0/0            10.96.0.10           /* kube-system/kube-dns:dns cluster IP */
+4    KUBE-SVC-ERIFXISQEP7F7OF4  tcp  --  0.0.0.0/0            10.96.0.10           /* kube-system/kube-dns:dns-tcp cluster IP */
+5    KUBE-SVC-JD5MR3NA4I4DYORP  tcp  --  0.0.0.0/0            10.96.0.10           /* kube-system/kube-dns:metrics cluster IP */
+6    KUBE-NODEPORTS  all  --  0.0.0.0/0            0.0.0.0/0            /* kubernetes service nodeports; NOTE: this must be the last rule in this chain */ ADDRTYPE match dst-type LOCAL
+
+
+docker@minikube:~$ sudo iptables -t nat -L KUBE-SVC-KMA464CPF6AVFFVI -n --line-numbers
+Chain KUBE-SVC-KMA464CPF6AVFFVI (2 references)
+num  target     prot opt source               destination
+1    KUBE-MARK-MASQ  tcp  -- !10.244.0.0/16        10.106.191.21        /* nodeport-ns/nodeport-service cluster IP */
+2    KUBE-SEP-BFZY737AVHV3Y7C4  all  --  0.0.0.0/0            0.0.0.0/0            /* nodeport-ns/nodeport-service -> 10.244.0.119:80 */ statistic mode random probability 0.50000000000
+3    KUBE-SEP-EYDYTVORAOTZX4IS  all  --  0.0.0.0/0            0.0.0.0/0            /* nodeport-ns/nodeport-service -> 10.244.0.121:80 */
+
+
+docker@minikube:~$ sudo iptables -t nat -L KUBE-NODEPORTS -n --line-numbers
+Chain KUBE-NODEPORTS (1 references)
+num  target     prot opt source               destination
+1    KUBE-EXT-KMA464CPF6AVFFVI  tcp  --  0.0.0.0/0            127.0.0.0/8          /* nodeport-ns/nodeport-service */ nfacct-name  localhost_nps_accepted_pkts
+2    KUBE-EXT-KMA464CPF6AVFFVI  tcp  --  0.0.0.0/0            0.0.0.0/0            /* nodeport-ns/nodeport-service */
+
+------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) DNAT (Destination Network Address Translation) 
+It rewrites the destination IP address and/or port of an incoming packet. In Kubernetes, kube-proxy programs iptables/IPVS rules that use DNAT to rewrite traffic
+destined for a Service (ClusterIP or NodePort) to the IP and port of one of the backend pods.
+
+Before DNAT
+The browser sends => Destination: 192.168.49.2:32111
+
+After DNAT
+iptables rewrites it to => Destination: 10.244.0.117:80
+Now the Linux kernel says: "The destination is now Pod 10.244.0.117:80, so I'll route the packet there."
+
+*******
+The Service (ClusterIP) is a virtual abstraction. It doesn't exist as a real network interface / in the real networking path. kube-proxy uses the Service definition to generate iptables
+rules, but for NodePort traffic, the packet is ultimately DNAT'd directly to one of the backend endpoints (pods).The real forwarding target is always the EndpointSlice (pods).
+*******
+
