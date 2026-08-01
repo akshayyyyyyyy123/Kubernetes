@@ -1,0 +1,29 @@
+(*) ReplicaSet vs ReplicationController
+
+- Both ReplicationController (RC) and ReplicaSet (RS) are Kubernetes controllers whose primary responsibility is to ensure that the desired number of Pod replicas
+are running at all times. If a Pod crashes or is deleted, both controllers automatically create a replacement Pod to maintain the desired state.
+
+- The main difference lies in how they select Pods.
+
+- A ReplicationController supports only equality-based label selectors. It can select Pods based on exact label matches, such as app=nginx and env=prod. 
+While it can match multiple labels together (logical AND), it cannot perform advanced label matching.
+
+- A ReplicaSet extends this capability by supporting both equality-based selectors (matchLabels) and set-based selectors (matchExpressions). With set-based 
+selectors, it can use operators such as:
+            * In – select Pods whose label value is one of several values.
+            * NotIn – exclude Pods with specific label values.
+            * Exists – select Pods that simply have a particular label key.
+            * DoesNotExist – select Pods that do not have a particular label key.
+
+- Another important difference is that Deployments manage ReplicaSets, not ReplicationControllers. When you create a Deployment, Kubernetes automatically 
+creates and manages a ReplicaSet underneath it. This enables features such as rolling updates, rollbacks, and revision history.
+
+- Today, ReplicationController is considered a legacy resource and is maintained mainly for backward compatibility. In modern Kubernetes, ReplicaSet is the 
+preferred controller, although it is usually created indirectly through a Deployment rather than being created manually.
+
+- In summary:
+  * Both maintain the desired number of Pod replicas.
+  * ReplicationController supports only equality-based selectors.
+  * ReplicaSet supports both equality-based and set-based selectors.
+  * ReplicaSet is the modern replacement for ReplicationController.
+  * Deployments create and manage ReplicaSets, making ReplicaSet the standard choice in production Kubernetes environments.
