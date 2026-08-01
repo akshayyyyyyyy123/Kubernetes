@@ -1,0 +1,73 @@
+(*) What is a Selector?
+  - A selector is simply a way for Kubernetes to find or identify objects based on their labels.
+  - It is just like a filter which would locate the objects based on the labels.
+  - Example:  
+              labels:
+                app: nginx
+                env: prod
+                tier: frontend
+  - A selector asks: "Which Pods match these labels?"
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Types of Selectors
+  - There are 2 types of label selectors in Kubernetes.
+
+(i) Equality-based Selector
+  - This compares labels using exact values.
+  - Supported operators: = , == , !=
+  - Example: app = nginx
+      Matches      : app=nginx ✅
+      Doesn't match: app=apache ❌
+  - Another example: env != dev
+      Matches      : env=prod ✅ , env=test ✅
+      Doesn't match: env=dev ❌
+
+(ii) Set-based Selector
+  - Instead of comparing to a single value, it compares against a set of values.
+  - Supported operators: In, NotIn, Exists, DoesNotExist
+  - Example: app IN (nginx, apache)
+  - Matches:  
+      app=nginx ✅
+      app=apache ✅
+      app=redis ❌
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Visual Comparison
+
+Pod1                 Pod2                 Pod3
+app=nginx            app=apache           app=redis
+env=prod             env=prod             env=dev
+
+(i) Equality-based : app = nginx
+Selected: Pod1
+
+(ii) Set-based : app IN (nginx, apache)
+Selected: Pod1 and Pod2
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Which Kubernetes objects use selectors?
+- Whenever Kubernetes needs to find Pods, it uses label selectors.
+- Many objects use them:
+  -> ReplicaSet
+  -> Deployment
+  -> Service
+  -> ReplicationController (only equality-based)
+  -> DaemonSet
+  -> Job (in some cases)
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Key difference
+
+| Equality-based  | Set-based                               |
+| --------------- | --------------------------------------- |
+| Exact match     | Match from a set of values              |
+| Simpler         | More flexible                           |
+| `=`, `==`, `!=` | `In`, `NotIn`, `Exists`, `DoesNotExist` |
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
