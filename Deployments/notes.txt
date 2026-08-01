@@ -1,0 +1,151 @@
+(*) What is a Deployment?
+  - A Deployment is a Kubernetes object that manages ReplicaSets and provides declarative updates for applications.
+  - Instead of creating a ReplicaSet directly, you create a deployment and kubernetes automatically creates and manages the ReplicaSet for you.
+  - Its responsibilities include:
+      * Maintaining the desired number of Pod replicas.
+      * Performing rolling updates with zero or minimal downtime.
+      * Supporting rollbacks to previous versions.
+      * Maintaining revision history.
+      * Scaling applications up or down.
+
+------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Why was Deployment introduced?
+  - ReplicaSet solved only one problem: "Maintain the desired number of Pod replicas."
+  - For example: Desired replicas = 3
+  - If one Pod crashes: ReplicaSet would create a new Pod.
+
+  # But what if you want to deploy a new version?
+  - Suppose your application is running: 3 Pods => nginx:1.24
+  - Now your developers release: nginx:1.25
+  - You need to update all Pods without bringing the application down which ReplicaSet cannot achieve this.
+  - If you modify the ReplicaSet's Pod template, existing Pods are not updated. Only Pods created in the future use the new template.
+  - You would have to manually:
+      * Delete old Pods
+      * Wait for new Pods
+      * Ensure enough Pods remain available
+      * Handle failures if new Pods don't start
+      * Keep track of the previous version in case you need to revert
+  - ReplicaSet doesn't automate any of this.
+
+Interview Ready:
+  - Deployment was introduced because ReplicaSet only maintains the desired number of Pod replicas; it does not manage application deployments. 
+Deployment provides higher-level deployment capabilities such as rolling updates, rollbacks, revision history, declarative updates and scaling 
+by creating and managing ReplicaSets. This allows applications to be updated safely with minimal or no downtime.
+
+------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Deployment was introduced to solve these problems
+  - Deployment sits above ReplicaSet.
+  - It automates the entire application deployment lifecycle.
+                  Deployment
+                      │
+                      ▼
+                  ReplicaSet
+                      │
+                      ▼
+                     Pods
+
+------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Responsibilities of a Deployment
+
+1. Rolling Updates
+  - Gradually replaces old Pods with new Pods.
+  - Keeps the application available during the update.
+
+2. Rollbacks
+  - If the new version fails, Deployment can revert to the previous working version.
+
+3. Revision History
+  - Maintains a history of previous ReplicaSets and versions.
+
+4. Scaling
+  - Scale the application up or down by updating the Deployment.
+
+5. Declarative Updates
+  - You simply declare the desired state (e.g., change the image), and Deployment performs the necessary steps automatically.
+
+------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Example
+
+- Initially:
+                Deployment
+                    │
+                    ▼
+              ReplicaSet-v1
+                    │
+                    ▼
+              3 Pods (nginx:1.24)
+
+- You change => image: nginx:1.25
+
+- Deployment automatically:
+                              Creates ReplicaSet-v2
+                                      │
+                                      ▼
+                              Starts new Pods
+                                      │
+                                      ▼
+                              Gradually removes old Pods
+                                      │
+                                      ▼
+                        Deletes ReplicaSet-v1 when rollout completes
+
+- You don't manually create ReplicaSets or delete Pods.
+
+------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) What is the Pod template?
+  - Inside a ReplicaSet is a Pod template.
+    spec:
+    template:
+      spec:
+        containers:
+        - image: nginx:1.24
+  - This template is used only when creating new Pods.
+  - It is not applied to Pods that already exist.
+
+------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Complete flow
+
+  - The ReplicaSet is owned by the Deployment.
+  - The Pods are owned by the ReplicaSet.
+
+                                                  kubectl apply
+                                                        │
+                                                        ▼
+                                                  API Server
+                                                        │
+                                                        ▼
+                                                  etcd
+                                                        ▲
+                                                        │
+                                                  Deployment Controller
+                                                        │
+                                                  Creates ReplicaSet
+                                                        ▼
+                                                  ReplicaSet Controller
+                                                        │
+                                                  Creates 3 Pods
+                                                        ▼
+                                                  Scheduler
+                                                        │
+                                                  Assigns Nodes
+                                                        ▼
+                                                  Kubelet
+                                                        │
+                                                  Starts Containers
+                                                        ▼
+                                                  Pods Running
+                                                        ▲
+                                                        │
+                                                  Endpoints Controller
+                                                        │
+                                                  Updates Service Endpoints
+                                                        ▼
+                                                  ClusterIP Service
+
+------------------------------------------------------------------------------------------------------------------------------------------
