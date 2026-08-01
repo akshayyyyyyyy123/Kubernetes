@@ -1,0 +1,29 @@
+(*) What is a ReplicationController?
+- A ReplicationController (RC) is one of the oldest Kubernetes controllers.
+- Its job is to maintain the desired number of pod replicas.
+- Lets say the value of replicas is set to 3, say PodA, PodB, PodC
+- If PodB crashes, replication controller notices the difference in the desired_count(3) and current_count(2). Then it creates a new pod (PodD)
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Problems with ReplicationController
+- ReplicationController supports only exact equality matching.
+- ReplicationController = only = (exact match). It only supports equality-based selectors.
+app = nginx ✅
+env = prod ✅
+app = nginx AND env = prod ✅
+
+- ReplicationController does NOT support
+app EXISTS ❌
+version DOES NOT EXIST ❌
+app IN (nginx, apache) ❌
+env NOT IN (dev) ❌
+
+- ReplicationController is the legacy controller that maintains the desired number of pod replicas. It has largely been replaced by ReplicaSet because
+ReplicaSet supports more expressive label selectors. In modern Kubernetes, Deployments manage ReplicaSets and provide rolling updates, rollbacks, and
+version history.
+
+- ReplicationController supports multiple labels, but only exact (=) matching. ReplicaSet additionally supports advanced selectors like IN, NOT IN, EXISTS, 
+and DOES NOT EXIST.
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------
