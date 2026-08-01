@@ -1,0 +1,113 @@
+(*) ReplicaSet
+  - A ReplicaSet (RS) is a Kubernetes object whose job is to maintain the desired number of identical Pods running at all times.
+  - If you say desired replicas = 3, then replicaSet continuously checks for current pods. If current=2, then it creates 1 pod and if current=4, then it 
+  deletes one pod.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) ARCHITECTURE
+
+                                                        ReplicaSet
+                                                            │
+                                                            ▼
+                                                          Pods
+
+------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) FLOW
+
+Step 01: You apply a ReplicaSet
+=> kubectl apply -f rs.yaml
+
+- The YAML goes to: kubectl --> kube-apiserver
+- The API server validates it and stores it in etcd.
+- Below is the desired state.
+
+etcd
+ReplicaSet
+replicas = 3
+selector = app=nginx
+
+
+Step 02: ReplicaSet Controller wakes up
+- Inside the kube-controller-manager, there is a controller called the ReplicaSet Controller.
+- The ReplicaSet Controller watches the API server. It does not read directly from etcd. It talks only to the API server.
+
+kube-controller-manager
+    │
+    ├── Node Controller
+    ├── Job Controller
+    ├── Deployment Controller
+    ├── ReplicaSet Controller   ← this one
+    └── ServiceAccount Controller
+
+
+Step 03: It compares desired vs current
+- The controller asks the API server:
+Give me:
+      ReplicaSet:
+      replicas = 3
+        Pods matching:
+        app=nginx
+- The API server responds Desired = 3 and Matching Pods = 0
+
+
+Step 04: Difference found
+- The controller calculates: Desired = 3, Current = 0, Need = +3 Pods
+- It sends a request to the API server - Create Pod 1, Create Pod 2, Create Pod 3
+- The API server stores the Pod objects in etcd.
+
+
+Step 05: Scheduler
+- The Scheduler watches the API server and decides which node to choose.
+- It updates the Pod objects through the API server.
+
+
+Step 06: Kubelet
+- The kubelet on each node watches the API server.
+- It notices: A Pod has been assigned to me.
+- It starts the container using the container runtime (such as containerd).
+
+
+
+(*) Entire flow
+
+                                    kubectl apply
+                                           │
+                                           ▼
+                                    API Server
+                                           │
+                                           ▼
+                                    etcd
+                                           ▲
+                                           │
+                                    ReplicaSet Controller (inside kube-controller-manager)
+                                           │
+                                           │ Watches the API server
+                                           │
+                                           ▼
+                                    Lists Pods with selector app=nginx
+                                           │
+                                           ▼
+                                    Current = 2
+                                    Desired = 3
+                                           │
+                                           ▼
+                                    Creates 1 Pod through the API server
+                                           │
+                                           ▼
+                                    Scheduler assigns a Node
+                                           │
+                                           ▼
+                                    Kubelet starts the container
+
+
+------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Where does the ReplicaSet compare desired and current state?
+
+- The ReplicaSet Controller runs inside the kube-controller-manager. It continuously watches the Kubernetes API server for ReplicaSet and Pod events.
+It reads the desired replica count from the ReplicaSet object and lists Pods matching the selector via the API server. If the current number of matching
+Pods differs from the desired count, it creates or deletes Pods by sending requests to the API server. The controller never communicates directly with etcd.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------
