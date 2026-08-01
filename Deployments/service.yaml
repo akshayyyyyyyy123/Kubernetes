@@ -1,0 +1,15 @@
+## ClusterIP service ##
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-service
+  namespace: deployment
+spec:
+  type: ClusterIP
+  selector:
+    app: nginx
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 80
