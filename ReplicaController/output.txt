@@ -20,3 +20,7 @@ NAME                        READY   STATUS    RESTARTS   AGE     LABELS
 nginx-rc-controller-4tmrl   1/1     Running   0          7s      app=nginx
 nginx-rc-controller-j5cm9   1/1     Running   0          9m23s   app=nginx
 nginx-rc-controller-p4tmd   1/1     Running   0          9m23s   app=nginx
+
+# kubectl get endpoints -n replication-controller                                                                                                    
+NAME                         ENDPOINTS                                         AGE
+replication-controller-svc   10.244.0.134:80,10.244.0.135:80,10.244.0.137:80   30m
