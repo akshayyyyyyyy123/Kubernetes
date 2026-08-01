@@ -1,0 +1,22 @@
+
+# kubectl get svc -n replication-controller -o wide                                                                                                   
+NAME                         TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)   AGE   SELECTOR
+replication-controller-svc   ClusterIP   10.109.141.16   <none>        80/TCP    27m   app=nginx
+
+
+# kubectl get pods -n replication-controller --show-labels                                                                                           
+NAME                        READY   STATUS    RESTARTS   AGE     LABELS
+nginx-rc-controller-h55bq   1/1     Running   0          8m50s   app=nginx
+nginx-rc-controller-j5cm9   1/1     Running   0          8m50s   app=nginx
+nginx-rc-controller-p4tmd   1/1     Running   0          8m50s   app=nginx
+
+
+# kubectl delete pod nginx-rc-controller-h55bq -n replication-controller                                                                             
+pod "nginx-rc-controller-h55bq" deleted from replication-controller namespace
+
+
+# kubectl get pods -n replication-controller --show-labels                                                                                           
+NAME                        READY   STATUS    RESTARTS   AGE     LABELS
+nginx-rc-controller-4tmrl   1/1     Running   0          7s      app=nginx
+nginx-rc-controller-j5cm9   1/1     Running   0          9m23s   app=nginx
+nginx-rc-controller-p4tmd   1/1     Running   0          9m23s   app=nginx
