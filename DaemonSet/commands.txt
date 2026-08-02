@@ -1,0 +1,47 @@
+1. Apply the yaml files
+
+# kubectl apply -f namespace.yaml                                                                                                                     
+namespace/daemonset-ns created
+
+# kubectl apply -f service.yaml                                                                                                                       
+service/nginx-service created
+
+# kubectl apply -f daemonset.yaml                                                                                                                     
+daemonset.apps/nginx-daemonset created
+
+--------------------------------------------------------------------------------------------------------------------------------------------
+
+# kubectl get ds -n daemonset-ns -o wide                                                                                                             
+NAME              DESIRED   CURRENT   READY   UP-TO-DATE   AVAILABLE   NODE SELECTOR   AGE   CONTAINERS        IMAGES         SELECTOR
+nginx-daemonset   1         1         1       1            1           <none>          18m   nginx-container   nginx:alpine   app=nginx
+
+=> Since Minikube is a Single-node cluster, if I create a DaemonSet, we would see only one pod. 
+  Number of DaemonSet Pods = Number of eligible nodes
+
+# kubectl get nodes                                                                                                                                   
+NAME           STATUS   ROLES           AGE   VERSION
+minikube       Ready    control-plane   49d   v1.34.0
+
+- The recommended option is to add more minikube nodes.
+  * Check your current nodes => # kubectl get nodes
+  * Add worker nodes => # minikube node add
+  
+# kubectl get nodes
+minikube
+minikube-m02
+minikube-m03
+
+* Now your DaemonSet will create:
+minikube
+ └── Pod1
+
+minikube-m02
+ └── Pod2
+
+minikube-m03
+ └── Pod3
+
+--------------------------------------------------------------------------------------------------------------------------------------------
+
+
+
