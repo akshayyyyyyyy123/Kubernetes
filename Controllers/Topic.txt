@@ -1,0 +1,169 @@
+(*) What is a Controller?
+  - A controller is a control loop running inside the kube-controller-manager that continuously watches the Kubernetes API Server and works to make the 
+current state match the desired state.
+  - Example: Think of it as a manager. You tell Kubernetes: "I want 3 Pods." 
+    The controller checks: Desired = 3 and Current = 2. It immediately creates one more Pod. 
+    If later there are 4 Pods: Desired = 3 and Current = 4. It deletes one Pod.
+    *** This continuous process is called the reconciliation loop. *** 
+
+------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Controller Flow
+
+                                                     kubectl apply
+                                                           │
+                                                           ▼
+                                                       API Server
+                                                           │
+                                                           ▼
+                                                    etcd (Desired State)
+                                                           ▲
+                                                           │
+                                                Controller watches API Server
+                                                           │
+                                                           ▼
+                                                Compares Desired vs Current
+                                                           │
+                                                           ▼
+                                              Creates/Updates/Deletes resources
+
+  - Important: Controllers never talk directly to etcd. They always communicate through the API Server.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Types of Controllers
+The kube-controller-manager contains many controllers. The most important ones are:
+
+1. ReplicaSet Controller
+  - Maintains the desired number of Pod replicas.
+  - It supports both equality-based and set-based selectors.
+
+                    ReplicaSet
+                        │
+                        ▼
+                       Pods
+
+------------------------------------------------------------------------------
+
+2. Deployment Controller
+  - It manages ReplicaSets.
+  - It provides Rolling updates, Rollbacks and Revision history.
+
+                    Deployment
+                        │
+                        ▼
+                    ReplicaSet
+                        │
+                        ▼
+                       Pods
+
+------------------------------------------------------------------------------
+
+3. ReplicationController
+  - It is a Legacy controller.
+  - Maintains Pod replicas but supports only equality-based selectors.
+  - It is rarely used today.
+
+------------------------------------------------------------------------------
+
+4. StatefulSet Controller
+  - Manages stateful applications.
+  - It provides Stable Pod names, Stable network identity, Persistent storage and Ordered creation/deletion.
+  - Examples: MySQL, PostgreSQL, Kafka, ZooKeeper
+
+------------------------------------------------------------------------------
+
+5. DaemonSet Controller
+  - Ensures one Pod runs on every node (or selected nodes).
+  - Examples: Fluent Bit, Node Exporter, CNI plugins
+
+------------------------------------------------------------------------------
+
+6. Job Controller
+  - Runs Pods until a task completes successfully.
+  - Example: Database migration, Backup script
+
+------------------------------------------------------------------------------
+
+7. CronJob Controller
+  - Runs Jobs on a schedule.
+  - Example: Nightly backup, Daily report generation
+
+------------------------------------------------------------------------------
+
+8. Node Controller
+  - Monitors node health.
+  - If a node becomes unreachable:
+      * Marks it NotReady
+      * Evicts Pods after a timeout
+      * Triggers rescheduling when appropriate
+
+------------------------------------------------------------------------------
+
+9. ServiceAccount Controller
+  - Creates and manages default ServiceAccounts for namespaces.
+
+------------------------------------------------------------------------------
+
+10. Namespace Controller
+  - Handles namespace deletion.
+  - Cleans up all resources before removing the namespace.
+
+------------------------------------------------------------------------------
+
+11. Endpoint/EndpointSlice Controller
+  - Watches Services and Pods.
+  - Updates the backend endpoints for Services automatically.
+
+                             Service
+                                │
+                                ▼
+                               Pod1
+                               Pod2
+                               Pod3
+
+------------------------------------------------------------------------------
+
+12. PersistentVolume Controller
+  - Handles binding of PersistentVolumeClaims to PersistentVolumes.
+                              PVC
+                               │
+                               ▼
+                               PV
+
+------------------------------------------------------------------------------
+
+(*) Where do these controllers run?
+  - They all run inside the kube-controller-manager.
+
+              kube-controller-manager
+              │
+              ├── Deployment Controller
+              ├── ReplicaSet Controller
+              ├── DaemonSet Controller
+              ├── StatefulSet Controller
+              ├── Job Controller
+              ├── CronJob Controller
+              ├── Node Controller
+              ├── Namespace Controller
+              ├── ServiceAccount Controller
+              ├── EndpointSlice Controller
+              ├── PersistentVolume Controller
+              └── many more...
+
+------------------------------------------------------------------------------
+
+(*) Interview Definition
+  - A Kubernetes controller is a control loop that continuously watches the API Server for changes and reconciles
+the current state of cluster resources with the desired state stored in Kubernetes objects. Controllers run inside 
+the kube-controller-manager and automate tasks such as maintaining Pod replicas, performing rolling updates, managing Jobs,
+monitoring node health, and handling storage and networking resources.
+
+  - Kubernetes is controller-driven. Every workload object is backed by a controller.  
+
+  - Every controller follows the same reconciliation loop:
+      * Watch the API Server.
+      * Compare desired vs current state.
+      * Take action to reconcile the difference.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------
