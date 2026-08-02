@@ -1,0 +1,171 @@
+(*) Why was DaemonSet introduced?
+
+  - Before DaemonSet existed, the only way to run the pods was through the controllers like ReplicaSet.
+  - ReplicaSet was responsible to run and manage the desired number of pods. It doesn't care about the placement of pods.
+  - We come across a situation where we would require a pod to run on all the nodes. That's where the DaemonSet comes into the picture.
+
+  DEFINITION
+  - A DaemonSet is a Kubernetes workload controller that ensures a single copy of a specific Pod runs on all—or a targeted subset of—nodes within a cluster.
+  When new nodes are added to the cluster, the DaemonSet automatically schedules pods onto them; when nodes are removed, those pods are garbage collected.
+  - For example, 
+        * lets say there are three nodes - Node1, Node2, Node3. 
+        * A new worker is added: Node4
+        * DaemonSet immediately notices that the Node4 has no DaemonSet Pod. It creates one automatically ensuring its presence on all the nodes.
+  - Notice the difference
+        * Deployment thinks: "How many Pods do I need?"
+        * DaemonSet thinks: "Which nodes don't have my Pod?"
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Examples of DaemonSet  
+  
+  Example 01: Fluent Bit (Log Collection)
+  - Every node has logs:
+      Node1
+        ├── kubelet logs
+        ├── container logs
+        └── system logs
+        
+        Node2
+        ├── kubelet logs
+        ├── container logs
+        └── system logs
+  
+  - A Fluent Bit Pod runs on each node.
+  - That Pod:
+      * Reads log files from the node (usually mounted from the host filesystem).
+      * Processes the logs.
+      * Sends them to Elasticsearch, Loki, CloudWatch, Datadog, etc.
+
+
+  Node1
+    ├── Applications
+    └── Fluent Bit Pod
+           │
+           ▼
+    Reads logs from Node1 only
+
+  Node2
+    ├── Applications
+    └── Fluent Bit Pod
+           │
+           ▼
+    Reads logs from Node2 only
+
+
+
+  Example 02: Prometheus Node Exporter
+  - Every node has metrics: CPU usage, Memory usage, Disk usage, Network usage
+  - A Node Exporter Pod runs on each node and exposes that node's metrics.
+  - Prometheus then scrapes each Node Exporter.
+
+
+  Example 03: CNI Plugin
+  - Plugins like Calico, Cilium, or Flannel need to configure networking on every node.
+  - So Kubernetes runs one CNI Pod per node using a DaemonSet.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Architecture
+
+                                          DaemonSet
+                                              │
+                                              ▼
+                                      DaemonSet Controller
+                                              │
+                                              ▼
+                                        Node1 ───► Pod
+                                        Node2 ───► Pod
+                                        Node3 ───► Pod
+                                        Node4 ───► Pod
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Control Plane Flow
+
+  - Suppose you apply: ds.yaml
+        kind: DaemonSet
+  
+  STEP 01: 
+      - kubectl apply -> API Server -> etcd . 
+      - The desired state gets stored in etcd.
+  
+  STEP 02: 
+      - DaemonSet Controller inside the kube-controller-manager watches the API Server. It retrieves DaemonSet and Nodes.
+      - Example: Nodes: Node1, Node2, Node3
+  
+  STEP 03: 
+      - Controller checks: 
+            Node1 - DaemonSet Pod -> YES
+            Node2 - DaemonSet Pod -> NO
+            Node3 - DaemonSet Pod -> YES
+
+  STEP 04: 
+      - DaemonSet Controller creates a Pod targeted for Node2. Unlike a Deployment, DaemonSet Pods are created for specific nodes.
+
+  Step 05: 
+      - API Server stores the Pod. Kubelet on Node2 sees: "A Pod has been assigned to me." Container starts.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Entire Flow
+
+                                                       kubectl apply
+                                                            │
+                                                            ▼
+                                                        API Server
+                                                            │
+                                                            ▼
+                                                          etcd
+                                                            ▲
+                                                            │
+                                                      DaemonSet Controller
+                                                            │
+                                                      Lists Nodes
+                                                            │
+                                                      Checks every node
+                                                            │
+                                                      Creates missing Pods
+                                                            ▼
+                                                        API Server
+                                                            ▼
+                                                        Kubelet
+                                                            ▼
+                                                      Running Pod
+
+ ------------------------------------------------------------------------------------------------------------------------------------------------------------ 
+
+ (*) Production Best Practices
+
+    - A DaemonSet is a Kubernetes workload object that ensures exactly one Pod runs on every eligible node in a cluster. The DaemonSet Controller watches 
+  the API Server for node changes and automatically creates or removes Pods as nodes are added or removed. It is commonly used for node-level services such
+  as log collectors, monitoring agents, CNI plugins, CSI node plugins, and security agents.
+  
+    ✔ Use DaemonSet only for node-level services
+        - Good examples include => Logging, Monitoring, Networking, Security and Storage agents
+        - Avoid deploying normal web applications with DaemonSets.
+
+    ✔ Add resource requests and limits
+        - A DaemonSet runs on every node.
+        - If each Pod consumes excessive CPU or memory, the impact is multiplied across the cluster.
+
+    ✔ Use tolerations carefully
+        - Many system DaemonSets (for example, CNI plugins) need to run even on control-plane nodes.
+        - This is typically done using tolerations for control-plane taints.
+
+    ✔ Restrict scheduling when appropriate
+        - Use node selectors or affinity to target only specific node groups if the agent is needed only there.
+
+    ✔ Keep images lightweight  
+        - Since every node pulls the image, smaller images reduce startup time and network usage.
+
+
+    | Deployment                                  | DaemonSet                                                              |
+    | ------------------------------------------- | ---------------------------------------------------------------------- |
+    | Maintains a desired number of Pods          | Maintains one Pod per eligible node                                    |
+    | Uses `replicas`                             | No `replicas` field                                                    |
+    | Scheduler decides placement                 | DaemonSet ensures coverage of nodes                                    |
+    | Best for web apps, APIs, stateless services | Best for logging, monitoring, networking, security, and storage agents |
+
+ ------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                        
