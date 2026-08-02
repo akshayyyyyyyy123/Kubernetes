@@ -1,0 +1,22 @@
+# kubectl get ds -o wide -n daemonset-ns                                                                                                             
+NAME              DESIRED   CURRENT   READY   UP-TO-DATE   AVAILABLE   NODE SELECTOR   AGE   CONTAINERS        IMAGES         SELECTOR
+nginx-daemonset   2         2         1       2            1           <none>          47m   nginx-container   nginx:alpine   app=nginx
+
+
+# kubectl get ds -n daemonset-ns --watch                                                                                                             
+NAME              DESIRED   CURRENT   READY   UP-TO-DATE   AVAILABLE   NODE SELECTOR   AGE
+nginx-daemonset   1         1         1       1            1           <none>          45m
+nginx-daemonset   2         2         1       2            1           <none>          46m
+nginx-daemonset   2         2         2       2            2           <none>          46m
+nginx-daemonset   2         2         1       2            1           <none>          46m
+nginx-daemonset   2         2         2       2            2           <none>          46m
+nginx-daemonset   2         2         1       2            1           <none>          46m
+nginx-daemonset   2         2         2       2            2           <none>          46m
+nginx-daemonset   2         2         1       2            1           <none>          46m
+nginx-daemonset   2         2         2       2            2           <none>          47m
+nginx-daemonset   2         2         1       2            1           <none>          47m
+
+
+# kubectl get ds -o wide -n daemonset-ns                                                                                                              
+NAME              DESIRED   CURRENT   READY   UP-TO-DATE   AVAILABLE   NODE SELECTOR   AGE   CONTAINERS        IMAGES         SELECTOR
+nginx-daemonset   2         2         1       2            1           <none>          46m   nginx-container   nginx:alpine   app=nginx
