@@ -1,0 +1,151 @@
+(*) Why were Node Labels introduced?
+  - Imagine your cluster has three worker nodes - Worker-1, Worker-2 and Worker-3. 
+  - To Kubernetes, they're just nodes.
+  - Example:
+    
+    Worker-1               Worker-2              Worker-3
+     16 CPU                 4 CPU                GPU Enabled
+    64 GB RAM              8 GB RAM
+
+  - The question is how can kubernetes distinguish these nodes? It is using the labels.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) What is a Node Label?
+  - A Node Label is a key-value pair attached to a Node that provides metadata about that node.
+  - Example:
+      disktype = ssd
+      environment = prod
+  - They are exactly like Pod labels. 
+  - Pod labels describe Pods AND Node labels describe Nodes.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Where are Node Labels stored?
+  - It is a Kubernetes API object stored in the control plane.
+  - The labels are stored in the metadata section of the Node object in the API server (and persisted in etcd through the API server).
+  - When a worker node joins the cluster:
+      * The kubelet on the worker node registers itself with the API Server.
+      * The API Server creates a Node object.
+      * That Node object is stored in etcd.
+      * The kubelet continuously updates the Node object's status (Ready, CPU, Memory, conditions, etc.)
+
+
+                Control Plane
+        ┌─────────────────────────┐
+        │ API Server              │
+        │ etcd                    │
+        │                         │
+        │ Node Object             │
+        │ ----------------------  │
+        │ Name: minikube-m02      │
+        │ Labels:                 │
+        │   role=logging          │
+        │ Status: Ready           │
+        │ Capacity: CPU, Memory   │
+        └─────────────────────────┘
+                    ▲
+                    │
+             kubelet updates it
+                    │
+                    ▼
+        ┌─────────────────────────┐
+        │      Worker Node        │
+        │                         │
+        │ kubelet                 │
+        │ kube-proxy              │
+        │ containerd              │
+        │ Pods                    │
+        └─────────────────────────┘
+
+**** Worker Node → The actual machine (VM, EC2 instance, Minikube node) ****
+**** Node Object → A Kubernetes resource representing that machine ****
+
+- A Node object is a Kubernetes API resource stored in the control plane (via the API Server and etcd). It represents a worker node in the cluster. 
+The kubelet running on the worker node registers and continuously updates the Node object with status and resource information. This distinction becomes
+very important later when we study the scheduler, because the scheduler never talks directly to the worker node—it schedules Pods based on the Node objects
+it retrieves from the API Server.
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Built-in Labels
+  - Kubernetes automatically adds many labels.
+  - These are added by Kubernetes or the cloud provider.
+
+
+# kubectl get nodes --show-labels                                                                                                                     
+NAME           STATUS   ROLES           AGE    VERSION   LABELS
+minikube       Ready    control-plane   51d    v1.34.0   beta.kubernetes.io/arch=arm64,beta.kubernetes.io/os=linux,kubernetes.io/arch=arm64,kubernetes.io/hostname=minikube,
+                                                         kubernetes.io/os=linux,minikube.k8s.io/commit=65318f4cfff9c12cc87ec9eb8f4cdd57b25047f3,minikube.k8s.io/name=minikube,
+                                                         minikube.k8s.io/primary=true,minikube.k8s.io/updated_at=2026_06_14T19_53_35_0700,minikube.k8s.io/version=v1.37.0,
+                                                         node-role.kubernetes.io/control-plane=,node.kubernetes.io/exclude-from-external-load-balancers=,role=logging
+
+minikube-m07   Ready    <none>          123m   v1.34.0   beta.kubernetes.io/arch=arm64,beta.kubernetes.io/os=linux,kubernetes.io/arch=arm64,kubernetes.io/hostname=minikube-m07,
+                                                         kubernetes.io/os=linux,minikube.k8s.io/commit=65318f4cfff9c12cc87ec9eb8f4cdd57b25047f3,minikube.k8s.io/name=minikube,
+                                                         minikube.k8s.io/primary=false,minikube.k8s.io/updated_at=2026_08_04T20_09_05_0700,minikube.k8s.io/version=v1.37.0
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Custom Labels
+  - You can add your own. 
+  # kubectl label node minikube role=logging
+
+  - Verify:
+  # kubectl get nodes --show-labels                                                                                                                     
+NAME           STATUS   ROLES           AGE    VERSION   LABELS
+minikube       Ready    control-plane   51d    v1.34.0   beta.kubernetes.io/arch=arm64,beta.kubernetes.io/os=linux,kubernetes.io/arch=arm64,kubernetes.io/hostname=minikube,
+                                                         kubernetes.io/os=linux,minikube.k8s.io/commit=65318f4cfff9c12cc87ec9eb8f4cdd57b25047f3,minikube.k8s.io/name=minikube,
+                                                         minikube.k8s.io/primary=true,minikube.k8s.io/updated_at=2026_06_14T19_53_35_0700,minikube.k8s.io/version=v1.37.0,
+                                                         node-role.kubernetes.io/control-plane=,node.kubernetes.io/exclude-from-external-load-balancers=,role=logging
+
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Updating Labels
+  - Suppose: role=logging
+  - Now change it: # kubectl label node minikube role=database --overwrite
+
+NAME           STATUS   ROLES           AGE    VERSION   LABELS
+minikube       Ready    control-plane   51d    v1.34.0   beta.kubernetes.io/arch=arm64,beta.kubernetes.io/os=linux,kubernetes.io/arch=arm64,kubernetes.io/hostname=minikube,
+                                                         kubernetes.io/os=linux,minikube.k8s.io/commit=65318f4cfff9c12cc87ec9eb8f4cdd57b25047f3,minikube.k8s.io/name=minikube,
+                                                         minikube.k8s.io/primary=true,minikube.k8s.io/updated_at=2026_06_14T19_53_35_0700,minikube.k8s.io/version=v1.37.0,
+                                                         node-role.kubernetes.io/control-plane=,node.kubernetes.io/exclude-from-external-load-balancers=,role=database
+
+(*) Removing Labels
+  # kubectl label node minikube role-                                                                                                                   
+node/minikube unlabeled
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Why do we need labels?
+    - Let's say: 
+            Node1                 Node2                  Node3
+        role=logging            role=database          role=frontend
+
+    - Now an application says, "I only want to run on logging nodes."
+    - Without labels its impossible. With labels, Kubernetes can identify the correct nodes.
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Architecture
+
+  - These labels become the foundation for scheduling decisions.
+
+          Node1
+          │
+          ├── role=logging
+          ├── env=prod
+          └── zone=a
+          
+          Node2
+          │
+          ├── role=database
+          ├── env=prod
+          └── zone=b
+          
+          Node3
+          │
+          ├── role=frontend
+          ├── env=test
+          └── zone=a
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
