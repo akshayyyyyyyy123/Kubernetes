@@ -1,0 +1,145 @@
+(*) Why was nodeSelector introduced?
+  - Suppose your cluster has three nodes.
+ 
+  Node1                    Node2               Node3
+  role=logging           role=database      role=frontend
+
+  - Now you deploy an application. Without any scheduling constraints, the kube-scheduler sees:
+            Eligible Nodes
+              ✔ Node1
+              ✔ Node2
+              ✔ Node3
+  - It is free to schedule the Pod on any of them. But what if your application is a logging service? Should it run on the database node? NO
+  - Before nodeSelector, Kubernetes had no simple built-in way to express this requirement.
+  - Our goal is to run the workloads / apps on the designated nodes, say logging workload on logging nodes.
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) What problem does it solve?
+  - nodeSelector solves one problem: "Run a Pod only on nodes that have specific labels."
+  - Example:
+
+      Node1                    Node2               Node3
+    role=logging            role=database       role=frontend
+
+  In the pod config you added:
+  nodeSelector:
+    role: logging
+
+  - Scheduler checks:
+      Node1                    Node2               Node3
+    role=logging            role=database       role=frontend
+      ✔ Match                ✖ Reject             ✖ Reject
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Architecture
+
+                                                              Pod
+                                                               │
+                                                               ▼
+                                                          nodeSelector
+                                                          role=logging
+                                                               │
+                                                               ▼
+                                                        kube-scheduler
+                                                               │
+                                                       Reads Node Objects
+                                                               │
+                                                      Filters Nodes by Label
+                                                               │
+                                                               ▼
+                                                        Eligible Nodes
+                                                               │
+                                                               ▼
+                                                       Selects One Node
+                                                               │
+                                                               ▼
+                                                           API Server
+                                                               │
+                                                               ▼
+                                                           kubelet
+                                                               │
+                                                               ▼
+                                                          Starts Pod
+
+  - nodeSelector is not evaluated by the Deployment Controller or ReplicaSet Controller.
+  - It is evaluated only by the kube-scheduler.
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Control-Plane Flow
+  - Suppose you apply:
+      spec:
+        nodeSelector:
+          role: logging
+
+
+Step 01: 
+
+          kubectl apply
+                │
+                ▼
+          API Server
+                │
+                ▼
+              etcd
+
+- The pod is created with nodeSelector role set to logging
+- At this point => Node Name = <empty>
+- The Pod is still Pending because it hasn't been scheduled.
+
+
+Step 02:
+- The kube-scheduler watches the API Server and notices a new unscheduled Pod.
+
+Step 03: 
+- The scheduler retrieves all Node objects.
+       Node1                    Node2               Node3
+    role=logging            role=database       role=frontend
+
+Step 04:
+- The scheduler filters the nodes based on the nodeSelector role which is "logging".
+
+Step 05:
+- If multiple nodes match, the scheduler runs its normal scoring process (resources, topology, etc.) to choose one.
+
+Step 06:
+- The scheduler writes the selected node into the Pod's spec.nodeName through the API Server.
+    Pod 
+      Before => nodeName = ""
+      After => nodeName = minikube
+
+Step 07:
+- The kubelet running on that node notices: "A Pod has been assigned to me." It pulls the image (if needed) and starts the container.
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Entire Flow
+
+                                                kubectl apply
+                                                      │
+                                                      ▼
+                                                API Server
+                                                      │
+                                                      ▼
+                                                    etcd
+                                                      ▲
+                                                      │
+                                                Scheduler watches Pods
+                                                      │
+                                                Gets Node Objects
+                                                      │
+                                                Filters using nodeSelector
+                                                      │
+                                                Chooses a matching node
+                                                      │
+                                                Updates Pod.spec.nodeName
+                                                      ▼
+                                                API Server
+                                                      ▼
+                                                  kubelet
+                                                      ▼
+                                                  Running Pod
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
