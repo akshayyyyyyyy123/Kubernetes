@@ -1,0 +1,106 @@
+1. What is a Node Selector?
+  - A Node Selector is the simplest scheduling mechanism in Kubernetes that allows you to schedule a Pod only on nodes with specific labels.
+
+
+2. Why was nodeSelector introduced?
+  - It was introduced to allow workloads to run only on nodes that meet certain criteria, such as hardware type, environment, region, or custom labels.
+  - Example: SSD nodes, GPU nodes, Production nodes
+
+
+3. What is the prerequisite for using nodeSelector?
+  - The target node must have the required label.
+  - Example: kubectl label node minikube role=logging
+
+
+4. Where is nodeSelector defined?
+  - Inside the Pod specification.
+      spec:
+        nodeSelector:
+          role: logging
+
+
+5. Does nodeSelector work for only Pods?
+  - No. It works for any workload that creates Pods:
+  - Pod, ReplicaSet, Deployment, DaemonSet, StatefulSet, Job and CronJob
+
+
+6. Who evaluates the nodeSelector?
+  - The kube-scheduler. It retrieves all Node objects from the API Server and filters out nodes that don't match the selector.
+
+
+7. Where are node labels stored?
+  - Inside the Node object's metadata.
+  metadata:
+    labels:
+      role: logging
+
+8. What happens if no node matches the nodeSelector?
+  - The Pod remains in the Pending state because the scheduler cannot find an eligible node.
+
+
+9. Can a Pod have multiple nodeSelectors?
+  - No. There is only one nodeSelector field, but it can contain multiple key-value pairs.
+  - Example:
+        nodeSelector:
+          role: logging
+          env: production
+
+
+10. Is nodeSelector AND or OR?
+  - It is AND.
+  - Example:  
+        nodeSelector:
+          role: logging
+          env: production
+  - The node must have: role=logging AND env=production
+
+
+11. How does the scheduler use nodeSelector?
+  - Only equality-based.
+  - You cannot use: In, NotIn, Exists
+  - Those require Node Affinity.
+
+
+12. Can nodeSelector express OR conditions?
+  - Example: logging OR monitoring
+  - No. For OR conditions, use Node Affinity.
+
+
+13. Can nodeSelector express NOT conditions?
+  - Example: Run everywhere except GPU nodes
+  - No. Use Node Affinity instead.
+
+
+14. What are the limitations of nodeSelector?
+  - Supports only equality-based matching.
+  - No OR, NOT conditions.
+  - No preference/priority.
+  - Cannot express complex scheduling rules.
+
+15. A node has:
+        role=logging
+        env=dev
+   Your Pod has: 
+      nodeSelector:
+        role: logging
+        env: prod
+What happens? 
+    - The Pod remains Pending because all specified labels must match.
+
+
+16. Can a DaemonSet use nodeSelector?
+  - Yes. The DaemonSet Controller creates Pods only on nodes matching the nodeSelector.
+
+
+17. Why would you use nodeSelector in production?
+  - To place workloads on appropriate nodes, such as:
+      GPU workloads → GPU nodes
+      Logging agents → Logging node pool
+      Database Pods → High-memory nodes
+      Production applications → Production node pool
+      SSD-dependent applications → SSD nodes
+
+
+18. If Node Affinity exists, why do we still have nodeSelector?
+  - nodeSelector is the simplest scheduling mechanism and is easy to configure for straightforward requirements.
+  - However, when you need more advanced scheduling—such as OR conditions, NOT conditions, or preferred (soft) placement rules—you use Node Affinity.
