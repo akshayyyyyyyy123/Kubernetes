@@ -1,0 +1,24 @@
+- A Node Label is a key-value pair attached to a Kubernetes Node object that provides metadata about the node. Labels are used by the scheduler and other 
+Kubernetes components to identify and select nodes based on their characteristics.
+
+- The labels are stored in the metadata section of the Node object in the API server (and persisted in etcd through the API server).
+
+                    Kubernetes Scheduling
+                           │
+        ┌──────────────────┼──────────────────┐
+        │                  │                  │
+        ▼                  ▼                  ▼
+   Node Labels       nodeSelector      Node Affinity
+                                              │
+                                              ▼
+                                   Taints & Tolerations
+
+- Who uses Node Labels?
+  * kube-scheduler (for nodeSelector and Node Affinity)
+  * DaemonSet Controller (to determine eligible nodes)
+  * Cluster administrators
+  * Operators and custom controllers
+
+- "I've labeled my nodes. How do I tell Kubernetes to place a Pod only on nodes with role=logging?"
+- That's exactly why nodeSelector was introduced.
+- It's the simplest scheduling constraint in Kubernetes, and it builds directly on the labels you've just learned.
