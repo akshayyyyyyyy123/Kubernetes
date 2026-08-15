@@ -1,0 +1,66 @@
+1. Why was Node Affinity introduced?
+  - We discovered that nodeSelector has several limitations.
+  - It only supports exact equality matching.
+
+  - Example:
+        nodeSelector:
+          role: database
+  - The scheduler will schedule the pods only the nodes which has the role set to "database". That's it.
+
+  - But production environments need much more flexibility.
+  - Suppose your nodes are:
+        Node1                  Node2                   Node3
+    role=database           role=logging            role=frontend
+  - Now the requirement is, "Run the Pod on database OR logging nodes."
+  - Can nodeSelector do that? ❌ No ❌
+  - Another requirement: I prefer SSD nodes, but if none are available, HDD nodes are acceptable.
+  - These limitations led to the introduction of Node Affinity.
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+2. What problem does Node Affinity solve?
+  - Node Affinity provides advanced scheduling rules.
+  - It supports:
+      * ✅ OR conditions : role IN (database, logging)
+      * ✅ NOT conditions : role NOT IN (gpu)
+      * ✅ Label existence : Label "ssd" exists
+      * ✅ Preferences (soft rules) : Prefer SSD nodes. If none exist, schedule on HDD.
+  - This makes scheduling much more expressive than nodeSelector.
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+3. Types of Node Affinity
+  - There are two main types.
+
+   A. Required During Scheduling, Ignored During Execution (HARD RULE)
+      - Think of this as a hard rule.
+      - The Pod must run on a matching node.
+      - If no node matches: Pod -> Pending state and pod remains unscheduled unless the matching node is found.
+
+   B. Preferred During Scheduling, Ignored During Execution (SOFT RULE)
+      - Think of this as a soft rule. 
+      - Example:
+          * Prefer SSD nodes. 
+              - If an SSD node exists: ✔ Schedule there.
+              - If not: ✔ Schedule on another eligible node.
+      - Here in this example, no matter what, the pod still runs.
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+4. Example
+  - Suppose you configure: Required Node Affinity
+  - The cluster has:
+            Node1                  Node2
+        role=frontend            role=logging
+  - Your Pod requires, role=database
+
+Question:
+What happens to the Pod? Will it:
+A. Run on frontend
+B. Run on logging
+C. Stay in Pending
+
+Answer - It stays in pending unless a matching node is found (C)
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+
