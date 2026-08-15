@@ -1,0 +1,39 @@
+EXAMPLE you have:
+
+Kubernetes Cluster
+      │
+      ├── Worker Node 1 (w1)
+      ├── Worker Node 2 (w2)
+      └── Worker Node 3 (w3)
+
+
+1. How does Kubernetes distinguish/classify the nodes?
+  - You can attach labels to nodes:
+      w1 → workload=frontend
+      w2 → workload=database
+      w3 → workload=backend
+  - So yes, Node Labels are used to identify/classify nodes based on characteristics or intended workloads.
+  - But Kubernetes already knows these are different nodes through their Node objects and node identity. 
+  - Labels are additional metadata that we use to classify/select them.
+
+
+2. How does Kubernetes decide which node should run a Pod?
+  - This is where nodeSelector comes in. Suppose your Pod says:
+    spec:
+      nodeSelector:
+        workload: database
+  - The meaning is: "Scheduler, I want this Pod to run on a node whose label is workload=database."
+  - The Scheduler looks at: 
+        w1 → workload=frontend   ❌
+        w2 → workload=database   ✅
+        w3 → workload=backend    ❌
+  - So it selects w2. 
+                          Pod
+                           │
+                           │ nodeSelector:
+                           │   workload: database
+                           ↓
+                        Scheduler
+                           │
+                           ↓
+                           w2
