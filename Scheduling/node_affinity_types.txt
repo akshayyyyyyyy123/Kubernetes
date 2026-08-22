@@ -1,0 +1,131 @@
+1. Required Node Affinity — Hard Rule
+  - How it works: Kubernetes will search the cluster for a node that matches your exact labels. If it finds one, it runs the pod. If it cannot find one, 
+the pod will sit in a Pending state forever until a matching node appears.
+  - Best Use Case: When your application physically cannot work without specific hardware. For example, a machine learning app that must have a graphics card (GPU),
+or data that must stay in a specific country for legal reasons.
+
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: role
+            operator: In
+            values:
+            - database
+
+  - Meaning the node which we select must have the label as "database".
+  - If no matching node exists, then the Pod gets into "PENDING" state.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+2. Preferred Node Affinity — Soft Rule
+  - How it works: Kubernetes will try its best to look for a node that matches your request. If all those nodes are full, or if no such nodes exist,
+Kubernetes doesn't give up. It simply ignores the preference and schedules the pod on any regular node that has free space.
+  - Best Use Case: For optimization and saving money. For example, you might prefer to run your app in a cheaper cloud zone, but you would rather it
+run in an expensive zone than not run at all.
+
+affinity:
+  nodeAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+    - weight: 100
+      preference:
+        matchExpressions:
+        - key: role
+          operator: In
+          values:
+          - database
+
+  - Here the scheduler says:
+            Database node available?
+                   │
+               ┌───┴───┐
+              YES      NO
+               │        │
+               ▼        ▼
+            Prefer    Use another
+            that      suitable node
+            node
+
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+* Preference Weight
+  - The preference weight concept is an algorithmic scoring mechanism used by the Kubernetes scheduler to rank nodes during the scheduling cycle.
+  - "weight" determines how strongly you prefer that condition. The range is: 1 - 100
+  - Higher weight = stronger preference.
+
+Example 01: Single preference
+
+Suppose:
+  Node1 → role=frontend
+  Node2 → role=logging
+  Node3 → role=database
+
+  affinity:
+    nodeAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        preference:
+          matchExpressions:
+          - key: role
+            operator: In
+            values:
+            - database
+
+  - The scheduler says: "I prefer Node3 because it matches my preference." So Node3 gets a higher scheduling score.
+  - But if there is NO database node:
+      Node1 → frontend
+      Node2 → logging
+      Node3 → monitoring
+  - The scheduler says: "None of my preferred nodes exist. That's okay. I'll schedule the Pod on another eligible node."
+  - So, It doesn't remain Pending.
+                No database node
+                       ↓
+          Preference cannot be satisfied
+                       ↓
+      Scheduler considers other eligible nodes
+                       ↓
+                Pod gets scheduled
+
+
+
+Example 02: Multiple Preferences
+  - You can even say: "Prefer database nodes and prefer SSD nodes."
+  - Now the scheduler can score nodes based on both preferences. This is something nodeSelector simply cannot do.
+
+    preferredDuringSchedulingIgnoredDuringExecution:
+    - weight: 80
+      preference:
+        matchExpressions:
+        - key: role
+          operator: In
+          values:
+          - database
+    
+    - weight: 50
+      preference:
+        matchExpressions:
+        - key: disk
+          operator: In
+          values:
+          - ssd
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+One VERY important naming detail
+
+- requiredDuringSchedulingIgnoredDuringExecution
+- preferredDuringSchedulingIgnoredDuringExecution
+
+What does IgnoredDuringExecution mean??
+- It means the affinity rule is considered when scheduling the Pod, but Kubernetes doesn't evict the Pod if the node's labels later change. 
+- Initially: Node1 => role=database, Pod requires : role=database, Pod gets scheduled to Node1
+- Later someone changes the node: Node1 => role=frontend. The Pod doesn't get kicked out just because the label changed.
+- That's what: IgnoredDuringExecution means.
+
+
+
+Difference
+  - Required Node Affinity and Preferred Node Affinity are two different ways to tell Kubernetes how to choose the right node for your containers(pods).
+  - The main difference is that Required is a strict rule that must be followed, while Preferred is a polite request that can be ignored if necessary.
