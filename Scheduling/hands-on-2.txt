@@ -1,0 +1,183 @@
+# kubectl get nodes -L role,name
+
+NAME           STATUS   ROLES           AGE    VERSION   ROLE            NAME
+minikube       Ready    control-plane   69d    v1.34.0   logging-role    master-node
+minikube-m07   Ready    <none>          18d    v1.34.0   database-role   worker-node-07
+minikube-m09   Ready    <none>          3h8m   v1.34.0   frontend-role   worker-node-09
+
+------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Step 04 — Required Node Affinity
+- Now let's do something nodeSelector can't easily express.
+- We want: Run on database OR frontend nodes.
+
+# required-affinity.yaml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-required-affinity-four
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: role
+            operator: In
+            values:
+            - logging-role
+            - database-role
+  containers:
+  - name: nginx
+    image: nginx:alpine
+
+# kubectl apply -f required-affinity.yaml
+  
+# kubectl get pod nginx-required-affinity -o wide                                                                                                   
+NAME                      READY   STATUS             RESTARTS        AGE   IP       NODE           NOMINATED NODE   READINESS GATES
+nginx-required-affinity   0/1     CrashLoopBackOff   9 (2m48s ago)   13m   <none>   minikube-m09   <none>           <none>
+
+It can run on : minikube (ROLE: logging-role, NAME: master-node) OR minikube-m07 (ROLE: database-role, NAME: worker-node-07)
+
+--------------------------------------------------------------------------------------------------------------------------------------------------
+
+Step 05 — Test NotIn
+- Now let's say: "Run the Pod on anything except frontend."
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-not-frontend-2
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: role
+            operator: NotIn
+            values:
+            - frontend-role
+  containers:
+  - name: nginx
+    image: nginx:alpine
+
+Now:
+minikube       logging     ✅
+minikube-m07   database    ✅
+minikube-m09   frontend    ❌
+
+--------------------------------------------------------------------------------------------------------------------------------------------------
+
+Step 06 — Preferred Node Affinity
+- Now we test soft preference. Prefer the frontend node.
+
+I have only two nodes running:
+
+# kubectl get nodes -L role,name                                                                                                                      
+NAME           STATUS   ROLES           AGE   VERSION   ROLE            NAME
+minikube       Ready    control-plane   69d   v1.34.0   logging-role    master-node
+minikube-m07   Ready    <none>          18d   v1.34.0   database-role   worker-node-07
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-preferred
+spec:
+  affinity:
+    nodeAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        preference:
+          matchExpressions:
+          - key: role
+            operator: In
+            values:
+            - frontend-role
+
+  containers:
+  - name: nginx
+    image: nginx:alpine
+
+- "I prefer a frontend node, but there isn't one. That's okay."
+- So both nodes remain eligible:
+    minikube       → logging-role   ✅
+    minikube-m07   → database-role  ✅
+- The Pod will therefore be scheduled on one of those two nodes.
+
+  
+Required + frontend doesn't exist
+        ↓
+❌ Pending
+
+Preferred + frontend doesn't exist
+        ↓
+✅ Schedule on another eligible node
+
+------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Step 7 — The best experiment 🔥
+
+- Let's intentionally create a Pod that cannot currently be scheduled.
+- Required: role=gpu
+- But currently:
+      minikube       logging
+      minikube-m07   database
+      minikube-m09   frontend
+  
+- Create gpu.yaml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-gpu
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: role
+            operator: In
+            values:
+            - gpu
+
+  containers:
+  - name: nginx
+    image: nginx:alpine
+
+# kubectl apply -f gpu.yaml
+- In this case, the pod remains in "PENDING" state.
+
+Required:
+role=gpu
+
+Current nodes:
+
+logging    ❌
+database   ❌
+frontend   ❌
+
+No match
+   ↓
+Pending
+
+See the scheduler's explanation
+# kubectl describe pod nginx-gpu
+- Look at the Events section.
+- You'll see a scheduling failure explaining that the nodes didn't satisfy the affinity requirements.
+- This is extremely useful in real production debugging.
+
+Example:
+  Events:
+  Type     Reason          Age                     From               Message
+  ----     ------          ----                    ----               -------
+  Normal   Scheduled       29m                     default-scheduler  Successfully assigned default/nginx-not-frontend to minikube-m07
+  Normal   Pulled          29m (x3 over 29m)       kubelet            Container image "nginx:alpine" already present on machine
+  Normal   Created         29m (x3 over 29m)       kubelet            Created container: nginx
+  Normal   Started         29m (x3 over 29m)       kubelet            Started container nginx
+  Normal   Killing         29m (x3 over 29m)       kubelet            Stopping container nginx
+  Normal   SandboxChanged  4m14s (x1393 over 29m)  kubelet            Pod sandbox changed, it will be killed and re-created.
+  Warning  BackOff         4m11s (x1382 over 29m)  kubelet            Back-off restarting failed container nginx in pod nginx-not-frontend_default(258d1937-95a1-4f88-bef3-979ec8ac7279)
+  
