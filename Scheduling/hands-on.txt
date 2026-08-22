@@ -1,0 +1,120 @@
+1. Add a new node
+# minikube node add
+  
+------------------------------------------------------------------------------------------------------------------------------------
+
+2. List nodes
+# kubectl get nodes
+NAME           STATUS   ROLES           AGE     VERSION
+minikube       Ready    control-plane   68d     v1.34.0
+minikube-m07   Ready    <none>          17d     v1.34.0
+minikube-m09   Ready    <none>          6m28s   v1.34.0
+
+------------------------------------------------------------------------------------------------------------------------------------
+  
+3. Check the current role
+# kubectl get nodes -L role
+NAME           STATUS   ROLES           AGE   VERSION   ROLE
+minikube       Ready    control-plane   69d   v1.34.0
+minikube-m07   Ready    <none>          17d   v1.34.0
+minikube-m09   Ready    <none>          15m   v1.34.0
+
+------------------------------------------------------------------------------------------------------------------------------------
+  
+Step 01 — Label your nodes
+- Let's give each node a different role:
+# kubectl label node minikube role=logging-role
+# kubectl label node minikube-m07 role=database-role
+# kubectl label node minikube-m09 role=frontend-role
+
+Validate the output:
+# kubectl get nodes -L role
+NAME           STATUS   ROLES           AGE   VERSION   ROLE
+minikube       Ready    control-plane   69d   v1.34.0   logging-role
+minikube-m07   Ready    <none>          17d   v1.34.0   database-role
+minikube-m09   Ready    <none>          20m   v1.34.0   frontend-role
+
+
+# kubectl get nodes --show-labels                                                                           
+minikube       Ready    control-plane   69d   v1.34.0   beta.kubernetes.io/arch=arm64,beta.kubernetes.io/os=linux,env=production,kubernetes.io/arch=arm64,kubernetes.io/hostname=minikube,kubernetes.io/os=linux,minikube.k8s.io/commit=65318f4cfff9c12cc87ec9eb8f4cdd57b25047f3,minikube.k8s.io/name=minikube,minikube.k8s.io/primary=true,minikube.k8s.io/updated_at=2026_06_14T19_53_35_0700,minikube.k8s.io/version=v1.37.0,node-role.kubernetes.io/control-plane,role=logging-role
+minikube-m07   Ready    <none>          17d   v1.34.0   beta.kubernetes.io/arch=arm64,beta.kubernetes.io/os=linux,kubernetes.io/arch=arm64,kubernetes.io/hostname=minikube-m07,kubernetes.io/os=linux,minikube.k8s.io/commit=65318f4cfff9c12cc87ec9eb8f4cdd57b25047f3,minikube.k8s.io/name=minikube,minikube.k8s.io/primary=false,minikube.k8s.io/updated_at=2026_08_04T20_09_05_0700,minikube.k8s.io/version=v1.37.0,role=database-role
+minikube-m09   Ready    <none>          20m   v1.34.0   beta.kubernetes.io/arch=arm64,beta.kubernetes.io/os=linux,kubernetes.io/arch=arm64,kubernetes.io/hostname=minikube-m09,kubernetes.io/os=linux,minikube.k8s.io/commit=65318f4cfff9c12cc87ec9eb8f4cdd57b25047f3,minikube.k8s.io/name=minikube,minikube.k8s.io/primary=false,minikube.k8s.io/updated_at=2026_08_22T19_45_03_0700,minikube.k8s.io/version=v1.37.0,role=frontend-role
+
+------------------------------------------------------------------------------------------------------------------------------------
+
+Step 02 — Test nodeSelector
+
+pod.yaml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: frontend-pod
+spec:
+  nodeSelector:
+    role: frontend
+  containers:
+  - name: frontend-container
+    image: nginx:alpine
+
+# kubectl apply -f pod.yaml
+
+# kubectl get pods -o wide                                                                                                                          
+NAME           READY   STATUS    RESTARTS   AGE   IP       NODE     NOMINATED NODE   READINESS GATES
+frontend-pod   1/1     Running   0          87s   <none>   <none>   <none>           <none>
+
+------------------------------------------------------------------------------------------------------------------------------------
+
+Step 03 — Test multiple nodeSelector labels
+
+# kubectl label node minikube name=master-node
+# kubectl label node minikube-m07 name=worker-node-07
+# kubectl label node minikube-m09 name=worker-node-09
+
+example 01: 
+pod.yaml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: log-pod-5
+spec:
+  nodeSelector:
+    role: logging-role
+    name: master-node
+  containers:
+  - name: log-container
+    image: nginx:alpine
+
+kubectl get pods -o wide                                                                                                                            
+NAME           READY   STATUS    RESTARTS   AGE     IP             NODE       NOMINATED NODE   READINESS GATES
+frontend-pod   0/1     Pending   0          29m     <none>         <none>     <none>           <none>
+log-pod-5      1/1     Running   0          4s      10.244.0.202   minikube   <none>           <none>
+
+- This demonstrates role: logging-role AND name: master-node
+
+Example 02: 
+pod.yaml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: log-pod-test
+spec:
+  nodeSelector:
+    role: logging-role
+    name: worker-node-07
+  containers:
+  - name: log-container
+    image: nginx:alpine
+
+kubectl get pods -o wide                                                                                                                            
+NAME           READY   STATUS    RESTARTS   AGE     IP             NODE       NOMINATED NODE   READINESS GATES
+log-pod-test   0/1     Pending   0          16m   <none>         <none>     <none>           <none>
+
+- The kube-scheduler looks for the node having both role: logging-role AND name: worker-node-07. But we dont have a node satisfying both the conditions.
+Hence the pod remain in "PENDING" state.
+
+------------------------------------------------------------------------------------------------------------------------------------
+  
+
