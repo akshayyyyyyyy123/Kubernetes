@@ -1,0 +1,60 @@
+Taints & Tolerations
+
+- The easiest way to understand them is to compare them with what you just learned.
+- NodeSelector / Node Affinity helps pods to choose where it wants to go.
+- Likewise in Taints & Tolerations, the worker node controls which pods are allowed to come.
+
+--------------------------------------------------------------------------------------------------------------------------------------------
+
+1. Why were Taints introduced?
+- Imagine your cluster has:
+    Node 1 → application workloads
+    Node 2 → application workloads
+    Node 3 → dedicated database node
+- You want Node 3 to be reserved exclusively for database workloads.
+- You could label it: role=database and tell your database Pod:
+            nodeSelector:
+              role: database
+- But there's a problem. What stops some other Pod from accidentally scheduling on Node 3? NOTHING...
+- The label only says: "Database Pods can choose this node." It does not say: "Other Pods are forbidden from using this node." 
+That's where Taints come in.
+
+--------------------------------------------------------------------------------------------------------------------------------------------
+
+2. Taint the Node
+- We can put a taint on Node 3:
+    role=database:NoSchedule
+- Now the node effectively says: 🚫 "Don't schedule Pods here unless they explicitly tolerate this taint."
+
+                    Node
+              role=database
+                    │
+              🚫 Taint
+                    │
+          ┌─────────┴─────────┐
+          │                   │
+    Normal Pod            DB Pod
+       ❌                    ✅
+                         toleration
+
+--------------------------------------------------------------------------------------------------------------------------------------------
+
+3. What is a Taint?
+- Definition: A taint is applied to a node to tell the scheduler to push away or reject pods that do not have a matching permission.
+- Syntax: You add a taint using the command: 
+    # kubectl taint nodes node-name key=value:taint-effect
+
+- A taint has three components: key=value:effect
+- For example: role=database:NoSchedule
+- key = role, value = database, effect = NoSchedule
+- Another example: dedicated=database:NoExecute
+
+Three Taint Effects:
+  (i) NoSchedule: The scheduler will not place a pod on the node unless the pod has a matching toleration. Existing running pods remain on the node.
+  (ii) PreferNoSchedule: The control plane tries to avoid placing non-tolerating pods on the node, but it is not a strict rule.
+  (iii) NoExecute: The scheduler blocks new pods without a matching toleration and evicts any already-running pods that do not tolerate the taint.
+
+--------------------------------------------------------------------------------------------------------------------------------------------
+
+4. What is a Toleration?
+- 
