@@ -1,0 +1,130 @@
+(*) What problem does StatefulSet solve?
+  - So far, we've mostly dealt with stateless applications.
+  - Example:
+                Deployment
+                   ↓
+                 Pod-1
+                 Pod-2
+                 Pod-3
+
+  - Imagine your web application has 3 Pods:
+      web-abc123
+      web-def456
+      web-ghi789
+
+  - If web-abc123 dies, Kubernetes can create a completely new Pod: web-xyz999
+  - That's perfectly fine.
+  - Why? Because the application doesn't care which specific Pod handles the request.
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) But now imagine a database
+  - Suppose you have: 
+           # MySQL
+           # MySQL
+           # MySQL
+  - You can't treat database instances exactly like random web-server Pods.
+  - You may need:
+          # A stable identity
+          # Stable hostname
+          # Persistent storage
+          # Predictable Pod names
+          # Ordered startup/shutdown
+  - For example:
+          # mysql-0
+          # mysql-1
+          # mysql-2
+- If mysql-1 dies, Kubernetes should recreate mysql-1, not just some random: mysql-xyz123
+- Because mysql-1 has a specific identity and potentially specific data associated with it.
+- That's the problem StatefulSet was designed to solve.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Deployment vs StatefulSet
+
+i) Deployment
+  - Think: "I need 3 interchangeable Pods."
+  - Pod-A, Pod-B, Pod-C
+  - They are basically interchangeable.
+  - If Pod-B dies, then no problem
+        Pod-B ❌
+           ↓
+        Pod-X ✅
+
+ii) StatefulSet
+  - Think: "I need 3 Pods with individual identities."
+            mysql-0
+            mysql-1
+            mysql-2
+  - If mysql-1 dies:
+          mysql-1 ❌
+              ↓
+          mysql-1 ✅
+  - The identity is preserved.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+🔥 Three major things StatefulSet gives you
+
+1. Stable identity
+  - Pods get predictable names: mysql-0, mysql-1, mysql-2
+  - Not random Deployment-style names.
+
+2. Stable network identity
+  - With a Headless Service, each Pod can have a predictable DNS identity.
+  - For example:
+      mysql-0.mysql
+      mysql-1.mysql
+      mysql-2.mysql
+  - So applications can address specific StatefulSet Pods.
+
+3. Persistent storage
+  - StatefulSets are commonly combined with PVCs:
+      mysql-0 → PVC-0
+      mysql-1 → PVC-1
+      mysql-2 → PVC-2
+  - If mysql-1 gets recreated:
+      mysql-1o
+         ↓
+      new Pod
+         ↓
+      same persistent storage
+         ↓
+      previous data
+  - That's extremely important for stateful applications.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Why not simply use Deployment + PVC?
+
+  - This is an important interview question.
+  - A Deployment can absolutely use persistent volumes.
+  - But a StatefulSet provides stable identity + stable network identity + ordered behavior + per-Pod storage association, which are important for many
+distributed/stateful systems.
+
+So:
+
+        Deployment
+          ↓                                            
+      Interchangeable Pods                            
+          ↓
+      Stateless applications
+
+            V/S
+
+      StatefulSet
+            ↓
+      Stable individual Pods
+            ↓
+      Stable identity
+            ↓
+      Stable storage
+            ↓
+      Stateful applications
+
+  - StatefulSets are commonly used for workloads such as: MySQL, PostgreSQL, MongoDB, Kafka, Elasticsearch.
+
+Important: StatefulSet doesn't magically make an application a distributed database or guarantee data consistency. The application itself still needs to handle replication,
+clustering, failover, etc.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------
