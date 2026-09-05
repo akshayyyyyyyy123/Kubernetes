@@ -57,4 +57,108 @@ Three Taint Effects:
 --------------------------------------------------------------------------------------------------------------------------------------------
 
 4. What is a Toleration?
-- 
+- A toleration is defined in the Pod specification and tells the scheduler that the Pod is allowed to be scheduled on a node with that matching taint.
+- A toleration doesn't tell the Pod to go to that node.
+
+Let's say your node is:
+    Node: minikube-m07
+    label: role=database
+    taint: role=database:NoSchedule
+
+And your Pod is:
+    spec:
+      nodeSelector: 
+        role: database
+
+What happens?
+- The scheduler goes roughly like this:
+1. nodeSelector check
+   - Pod says: "I want a node where role=database."
+   - minikube-m07 has role=database. ✅ nodeSelector matches.
+
+2. Taint check
+   - But the node also says: role=database:NoSchedule
+   - Meaning: "I don't accept Pods unless they have the matching toleration."
+   - Your Pod doesn't have a toleration. ❌ Taint check fails.
+   - Final result: The Pod will NOT be scheduled onto that database node. It will remain PENDING state. Even though the nodeSelector matches perfectly.
+
+Now add the toleration for pods.yaml:
+
+spec:
+  nodeSelector:
+    role: database
+
+  tolerations:
+  - key: role
+    operator: Equal
+    value: database
+    effect: NoSchedule
+
+🔥 This is the key mental model:
+    nodeSelector = WHERE I WANT TO GO
+    toleration = WHERE I'M ALLOWED TO GO
+
+--------------------------------------------------------------------------------------------------------------------------------------------
+
+** WITHOUT TAINTS **
+
+- Suppose lets say there are two nodes:
+  Node 1: role=database 
+  Node 2: role=frontend
+
+- You create a database Pod:
+    nodeSelector:
+      role: database
+
+- This database pod which you create, gets scheduled on the Node 1.
+- But now imagine some random Pod which doesn't have any nodeSelector, then even that pod is also allowed to go to NODE 1.
+- So the label says: "Database Pods, you can choose me." It does NOT say: "Only Database Pods can come here."
+- This is where taint comes in... You put on Node 1: role=database:NoSchedule... Now Node 1 says: 🚫 "Nobody comes here unless they have permission."
+
+- Your database Pod has:
+nodeSelector:
+  role: database
+
+tolerations:
+- key: role
+  operator: Equal
+  value: database
+  effect: NoSchedule
+
+So: 
+NodeSelector
+"I WANT database node"
+          ↓
+       Database
+          ↓
+Toleration
+"I'M ALLOWED on database node"
+          ↓
+       ✅ Schedule
+
+- A random Pod:
+    No nodeSelector
+    No toleration
+hits: 
+    Database node
+         ↓
+     🚫 Taint
+         ↓
+    Cannot schedule
+
+--------------------------------------------------------------------------------------------------------------------------------------------
+
+** So why do we need both? **
+- Because they solve opposite problems:
+
+| Concept                   | Question it answers                           |
+| ------------------------- | --------------------------------------------- |
+| `nodeSelector` / Affinity | **Where should my Pod go?**                   |
+| Taint                     | **Which Pods should stay away from my node?** |
+| Toleration                | **Is my Pod allowed onto this tainted node?** |
+
+
+- One-line takeaway:
+    nodeSelector protects the Pod's placement choice; taint protects the Node from unwanted Pods.
+
+--------------------------------------------------------------------------------------------------------------------------------------------
