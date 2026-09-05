@@ -1,0 +1,76 @@
+(*) What is a Headless Service?
+  - A Headless Service is a Service that doesn't have a cluster IP.
+  - You create it by:
+      spec:
+        clusterIP: None
+  - That's why it's called headless — there is no single Service IP acting as the "head."
+  - Instead, DNS gives you the individual Pod IPs.
+  
+               Headless Service
+                    ↓
+             DNS resolution
+              /     |     \
+             ↓      ↓      ↓
+          Pod-1   Pod-2   Pod-3
+
+  - You get:
+        Pod IP 1
+        Pod IP 2
+        Pod IP 3
+
+  --------------------------------------------------------------------------------------------------------------------------------------------
+
+  (*) Why do we need this?
+    - This becomes very important with StatefulSets.
+  
+              StatefulSet
+                    ↓
+           ┌─────────┬─────────┬
+           ↓         ↓         ↓
+          db-0      db-1      db-2
+
+    - These Pods have stable identities. You may want applications to be able to specifically discover: db-0 , db-1 and db-2
+    - A normal Service hides the individual Pods IPs behind one Service IP.
+    - A Headless Service exposes the individual Pods through DNS.
+    - For example:
+        db-0.my-db-service
+        db-1.my-db-service
+        db-2.my-db-service
+    - This allows applications to discover and communicate with specific StatefulSet members.
+
+
+  EXAMPLE:
+        apiVersion: v1
+        kind: Service
+        metadata:
+          name: mysql
+        spec:
+          clusterIP: None
+          selector:
+            app: mysql
+          ports:
+            - port: 3306
+
+    - The important line is: clusterIP: None ... That makes it Headless.
+
+--------------------------------------------------------------------------------------------------------------------------------------------
+  
+  (*) Normal vs Headless Service
+
+| Normal Service            | Headless Service                 |
+| ------------------------- | -------------------------------- |
+| Has ClusterIP             | No ClusterIP                     |
+| Provides one stable IP    | DNS returns Pod IPs              |
+| Load-balances traffic     | Helps discover individual Pods   |
+| Hides individual Pods     | Exposes individual Pod endpoints |
+| Common for stateless apps | Very common with StatefulSets    |
+
+--------------------------------------------------------------------------------------------------------------------------------------------
+
+🎯 Interview definition
+
+A Headless Service is a Kubernetes Service with "clusterIP: None" that doesn't provide a virtual IP or load balancing. Instead, DNS resolves directly to the
+IP addresses of the selected Pods, commonly allowing StatefulSet Pods to be individually discovered.
+
+--------------------------------------------------------------------------------------------------------------------------------------------
+     
