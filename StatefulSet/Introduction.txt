@@ -1,0 +1,49 @@
+(*) Stateless
+  - Stateless means a system does not remember information about a previous request.
+  - Each request is treated independently.
+  - No memory → Stateless
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Stateful
+  - A system remembers information from previous interactions.
+  - The system maintains some kind of state/memory.
+  - Example: You log into Instagram. Instagram remembers:
+    * Who you are
+    * Your login/session
+    * Your preferences
+    * Your previous activity
+- Has memory → Stateful
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Easy way to remember 🧠
+
+| Term          | Simple meaning                         |
+| ------------- | -------------------------------------- |
+| **Stateless** | Doesn't remember previous interactions |
+| **Stateful**  | Remembers previous interactions        |
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Now connect this to Kubernetes
+  - When we say Stateless application, we mean the application doesn't need to keep important data inside that particular pod.
+  - Example: User → Pod 1, User → Pod 2, User → Pod 3
+  - Any Pod can handle the request because the Pods don't have important unique memory.
+  - That's why applications like web servers / APIs are commonly deployed as stateless workloads.
+
+  - When we say Stateful application, the application needs to maintain important data or identity.
+  - Example: MySQL, MongoDB, Redis, Kafka
+  - You can't simply treat every Pod as identical because each instance may have persistent data, identity or ordered relationships.
+  - That's where Kubernetes StatefulSets become useful.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Interview-level definition
+  - Stateless:
+      An application that does not maintain client/session data locally and can handle requests from any instance.
+  - Stateful:
+      An application that maintains persistent data, identity, or session information and therefore requires its state to be preserved.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+    
