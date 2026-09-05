@@ -1,0 +1,88 @@
+(*) Taints & Tolerations
+
+- Taints and tolerations are used to control which Pods are allowed to run on specific nodes.
+- A taint is applied to a node to repel Pods that don't have a matching toleration.
+- A toleration is defined in the Pod specification and tells the scheduler that the Pod is allowed to be scheduled on a node with that matching taint.
+- Taints and tolerations are commonly used to dedicate nodes for specific workloads and prevent unwanted Pods from being scheduled there.
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) End-to-end flow
+
+- Suppose we have:
+    Node-3
+  label: role=database
+  taint: role=database:NoSchedule
+
+- The taint means: 🚫 "Don't schedule Pods here unless they tolerate me."
+- Now consider a Pod.
+
+
+Case 1 — No toleration
+
+       Pod
+        ↓
+  Node-3 has taint
+        ↓
+  Pod doesn't tolerate it
+        ↓
+  ❌ Cannot schedule
+
+
+Case 2 — Matching toleration
+
+      Pod
+        ↓
+  Has matching toleration
+        ↓
+  Taint allows it
+        ↓
+  ✅ Node-3 becomes eligible
+
+- But here's the important interview point: "A toleration does not tell the scheduler to choose that node. It only makes the Pod eligible for that tainted node."
+- If you want the Pod to specifically choose the database node, combine the toleration with:
+    nodeSelector:
+      role: database
+or Node Affinity.
+
+- So remember:
+
+                  NodeSelector / Affinity
+                          ↓
+                  "WHERE do I want to run?"
+                  
+                  Toleration
+                          ↓
+                  "AM I ALLOWED to run there?"
+                  
+                  Taint
+                          ↓
+                  "WHICH Pods should stay away?"
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+🔥 One-liner for an interview
+
+"Taints are node-side rules that repel Pods, while tolerations are Pod-side permissions that allow Pods to run on tainted nodes. 
+Tolerations don't attract Pods to a node; they only make them eligible."
+
+
+(*) Three Taint Effects
+    (i) NoSchedule
+    - Don't schedule new Pods unless they tolerate the taint.
+
+    (ii) PreferNoSchedule
+      - Try not to schedule Pods here. It's a soft restriction.
+
+    (iii) NoExecute
+      - This is stronger.
+      - Don't schedule new Pods here AND evict existing Pods that don't tolerate the taint.
+
+
+| Effect             | Meaning                                                        |
+| ------------------ | -------------------------------------------------------------- |
+| `NoSchedule`       | Don't schedule new non-tolerating Pods                         |
+| `PreferNoSchedule` | Try to avoid scheduling non-tolerating Pods                    |
+| `NoExecute`        | Don't schedule them and evict existing non-tolerating Pods     |
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
