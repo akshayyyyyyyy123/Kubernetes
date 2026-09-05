@@ -1,0 +1,97 @@
+(*) Interview Ready
+  - A StatefulSet is a Kubernetes workload controller designed for stateful applications that require stable Pod identity, stable network identity, persistent storage, 
+and ordered deployment or scaling.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Example:
+1. Stateless application → Deployment
+  - Suppose you have a simple backend API:
+
+                User
+                  ↓
+                Service
+                  ↓
+         ┌───────┬───────┬
+         ↓       ↓       ↓
+        Pod 1   Pod 2   Pod 3
+
+   - All three Pods are basically identical.
+   - If Pod 1 dies: Pod 1 ❌, Pod 2 ✅, Pod 3 ✅. Kubernetes creates a new Pod.
+   - The new Pod doesn't need to recover anything important from the old Pod because the application didn't store important state inside Pod 1.
+   - That's a stateless application.
+
+
+Kubernetes object: Deployment
+  - We normally use: Deployment → ReplicaSet → Pods
+
+  - Example:
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: nginx
+      spec:
+        replicas: 3
+        template:
+          spec:
+            containers:
+              - name: nginx
+                image: nginx
+
+    - The Deployment's job is basically, "Keep 3 identical Pods running."
+
+----------------------------------------------------------------------------
+
+2. Stateful application → StatefulSet
+  - Now imagine MySQL.
+
+        MySQL Pod 1
+             ↓
+      Important database data
+
+  - If that Pod dies, we cannot simply create a completely fresh Pod and say everything is fine.
+  - We need:
+      * same identity
+      * same persistent storage
+      * data to survive pod failure
+  - That's a stateful application.
+  - Kubernetes provides StatefulSet
+
+  - StatefulSet Pods have stable names
+
+  * With Deployment, Pods can be replaced and get different names.
+      nginx-7d8f9c-x7abc
+      nginx-7d8f9c-p9xyz
+      nginx-7d8f9c-k2def
+
+  * With StatefulSet:
+      mysql-0
+      mysql-1
+      mysql-2
+
+  * If mysql-1 dies, Kubernetes recreates mysql-1. That's important because the application may depend on its identity.
+
+              StatefulSet
+                  ↓
+       ┌─────────┬─────────┬
+       ↓         ↓         ↓
+      mysql-0   mysql-1   mysql-2
+        ↓         ↓         ↓
+      PV        PV        PV
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+3. The biggest difference
+
+  (*) Deployment - "I need 3 copies of my application." It doesn't really matter which Pod handles the request.
+  (*) StatefulSet - "I need 3 specific instances, each with its own identity and storage."
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+4. Interview-level answer 🎯
+
+  (*) "What is the difference between Deployment and StatefulSet?"
+  - Deployment is mainly used for stateless applications where Pods are interchangeable and don't require their own persistent identity or storage. StatefulSet is
+used for stateful applications where Pods need stable identities, stable storage, and predictable ordering.
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------
