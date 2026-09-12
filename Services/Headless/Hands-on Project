@@ -1,0 +1,272 @@
+🚀 Hands-on Project: Kubernetes Headless Service 🚀
+
+(*) What we'll build
+
+                    Kubernetes Cluster
+                           │
+                    Headless Service
+                    db-headless
+                    ClusterIP: None
+                           │
+             ┌─────────────┼─────────────┐
+             │             │             │
+          mysql-0       mysql-1       mysql-2
+          10.x.x.x      10.x.x.x      10.x.x.x
+             │             │             │
+             └─────────────┴─────────────┘
+                    Individual Pods
+
+The important difference:
+  - Normal Service : client → service → one of the Pods
+  - Headless Service : client → DNS → Pod IPs directly
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Phase 1 — Create namespace
+namespace.yaml
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: headless-ns
+
+# kubectl apply -f namespace.yaml
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Phase 2 — Create Headless Service
+headless-svc.yaml
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: headless-svc
+  namespace: headless-ns
+spec:
+  clusterIP: None
+  selector:
+    app: database-app
+  ports:
+    - protocol: TCP
+      port: 3306
+      targetPort: 3306
+
+# kubectl apply -f headless-svc.yaml
+
+# kubectl get svc -n headless-ns                                                                                                                   
+NAME           TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)    AGE
+headless-svc   ClusterIP   None         <none>        3306/TCP   21m
+
+🔥 Important
+Here,
+clusterIP: None
+That's what makes this service headless. There is no virtual ClusterIP.
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Phase 3 — Create StatefulSet
+database.yaml
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: database
+  namespace: headless-ns
+spec:
+  serviceName: headless-svc
+  replicas: 3
+
+  selector:
+    matchLabels:
+      app: database-app
+
+  template:
+    metadata:
+      labels:
+        app: database-app
+
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:alpine
+          ports:
+            - containerPort: 3306
+
+# kubectl apply -f database.yaml
+
+# kubectl get pods -n headless-ns -o wide                                                                                                           
+NAME         READY   STATUS    RESTARTS   AGE   IP             NODE       NOMINATED NODE   READINESS GATES
+database-0   1/1     Running   0          24m   10.244.0.214   minikube   <none>           <none>
+database-1   1/1     Running   0          24m   10.244.0.215   minikube   <none>           <none>
+database-2   1/1     Running   0          24m   10.244.0.216   minikube   <none>           <none> 
+
+Notice something very important: database-0, database-1, database-2
+StatefulSet gives the Pods stable names.
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Phase 4 — Check the Service endpoints
+
+# kubectl get endpoints -n headless-ns headless-svc                                                                                                 
+NAME           ENDPOINTS                                               AGE
+headless-svc   10.244.0.214:3306,10.244.0.215:3306,10.244.0.216:3306   28m
+
+🔥 This is our first proof.
+The Headless Service isn't hiding everything behind one ClusterIP.
+It knows about the individual Pod IPs.
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Phase 5 — Let's test DNS 🔥
+- This is the most important part.
+- Create a temporary client Pod:
+
+kubectl run dns-client \
+  -n headless-ns \
+  --image=busybox:1.36 \
+  --restart=Never \
+  -- sleep 3600
+
+
+# kubectl get pods -n headless-ns -o wide                                                                                                            
+NAME         READY   STATUS    RESTARTS   AGE   IP             NODE       NOMINATED NODE   READINESS GATES
+database-0   1/1     Running   0          29m   10.244.0.214   minikube   <none>           <none>
+database-1   1/1     Running   0          29m   10.244.0.215   minikube   <none>           <none>
+database-2   1/1     Running   0          29m   10.244.0.216   minikube   <none>           <none>
+dns-client   1/1     Running   0          10s   10.244.0.217   minikube   <none>           <none>
+
+
+# kubectl exec -it dns-client -n headless-ns -- sh                                                                                                    
+/ # ls
+bin    dev    etc    home   lib    lib64  proc   root   sys    tmp    usr    var
+/ # nslookup headless-svc
+Server:		10.96.0.10
+Address:	10.96.0.10:53
+
+** server can't find headless-svc.cluster.local: NXDOMAIN
+
+** server can't find headless-svc.cluster.local: NXDOMAIN
+
+** server can't find headless-svc.svc.cluster.local: NXDOMAIN
+
+** server can't find headless-svc.svc.cluster.local: NXDOMAIN
+
+
+Name:	headless-svc.headless-ns.svc.cluster.local
+Address: 10.244.0.216
+Name:	headless-svc.headless-ns.svc.cluster.local
+Address: 10.244.0.214
+Name:	headless-svc.headless-ns.svc.cluster.local
+Address: 10.244.0.215
+
+🚨 This is the main Headless Service demonstration. 
+We should get multiple addresses and we got it unlike the normal service headless-svc → 10.96.x.x
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+🔥 Phase 6 — Prove that there is NO ClusterIP
+
+# kubectl get svc -n headless-ns -o wide                                                                                                             
+NAME           TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)    AGE   SELECTOR
+headless-svc   ClusterIP   None         <none>        3306/TCP   38m   app=database-app
+
+
+# kubectl describe svc headless-svc -n headless-ns                                                                                                   
+Name:                     headless-svc
+Namespace:                headless-ns
+Labels:                   <none>
+Annotations:              <none>
+Selector:                 app=database-app
+Type:                     ClusterIP
+IP Family Policy:         SingleStack
+IP Families:              IPv4
+IP:                       None
+IPs:                      None
+Port:                     <unset>  3306/TCP
+TargetPort:               3306/TCP
+Endpoints:                10.244.0.214:3306,10.244.0.215:3306,10.244.0.216:3306
+Session Affinity:         None
+Internal Traffic Policy:  Cluster
+Events:                   <none>
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Phase 7 — Compare with a normal Service
+
+normal-service.yaml
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: normal-svc
+  namespace: headless-ns
+spec:
+  selector:
+    app: database-app
+  ports:
+    - protocol: TCP
+      port: 3306  
+      targetPort: 3306
+
+# kubectl apply -f normal-service.yaml
+
+# kubectl get svc -n headless-ns -o wide                                                                                                            
+NAME           TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)    AGE   SELECTOR
+headless-svc   ClusterIP   None             <none>        3306/TCP   58m   app=database-app
+normal-svc     ClusterIP   10.102.179.155   <none>        3306/TCP   13m   app=database-app
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+🧪 Phase 8 — Verify DNS difference
+
+Enter the client again:
+# kubectl exec -it dns-client -n headless-ns -- sh
+
+CASE I: For normal-svc we would get only one IP
+/ # nslookup normal-svc
+Server:		10.96.0.10
+Address:	10.96.0.10:53
+
+Name:	normal-svc.headless-ns.svc.cluster.local
+Address: 10.102.179.155
+
+
+CASE II: For headless svc we get number of pod IPs depending on the number of replicas set
+/ # nslookup headless-svc
+Server:		10.96.0.10
+Address:	10.96.0.10:53
+
+Name:	headless-svc.headless-ns.svc.cluster.local
+Address: 10.244.0.215
+Name:	headless-svc.headless-ns.svc.cluster.local
+Address: 10.244.0.216
+Name:	headless-svc.headless-ns.svc.cluster.local
+Address: 10.244.0.214
+
+
+|                      | Normal Service     | Headless Service         |
+| -------------------- | ------------------ | ------------------------ |
+| ClusterIP            | Yes                | **None**                 |
+| DNS returns          | Service IP         | **Pod IPs**              |
+| Load balancing       | Service/kube-proxy | Client/service discovery |
+| Direct Pod discovery | No                 | **Yes**                  |
+| Common use           | Web apps           | Stateful applications    |
+| StatefulSet pairing  | Optional           | **Very common**          |
+
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+* SUMMARY
+
+1. What is a Headless Service?
+- "A Headless Service is a Kubernetes Service configured with clusterIP: None. Unlike a normal Service, it doesn't provide a virtual ClusterIP for load balancing.
+Instead, Kubernetes DNS returns the IP addresses of the individual Pods selected by the Service. This is particularly useful for service discovery in stateful 
+applications, commonly together with StatefulSets."
+
+
+2. Why StatefulSet + Headless Service?
+- "StatefulSets provide stable Pod identities such as database-0, database-1, and database-2, while the Headless Service provides DNS-based discovery of those 
+individual Pods. This allows applications such as databases to communicate with specific instances rather than treating all Pods as interchangeable."
+Why StatefulSet + Headless Service?
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------
