@@ -1,0 +1,188 @@
+(*) Kubernetes Storage
+  - The first thing to understand is why Kubernetes needs storage at all.
+  
+(*) The problem  
+  - What happens to data when a Pod dies?
+  
+  - Suppose you deploy MySQL:
+      Pod
+       └── MySQL
+            └── /var/lib/mysql
+                ├── users
+                ├── orders
+                └── payments
+
+  - You store data inside the container.
+  - Now: 
+      # kubectl delete pod mysql-0
+  - Kubernetes creates a new Pod.
+  - The new Pod gets a new container filesystem.
+
+    OLD POD
+      mysql-0
+      └── /var/lib/mysql
+          ├── users
+          └── orders
+                ❌ GONE
+
+
+    NEW POD
+      mysql-0
+        └── /var/lib/mysql
+              └── EMPTY
+
+   - That's the fundamental reason Kubernetes has persistent storage.
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) So Kubernetes provides persistent storage
+  - The basic idea is:
+
+                        Pod
+                         ↓
+                      Volume
+                         ↓
+                  Persistent Storage
+
+  
+  - Now if the Pod dies:
+
+                    Old Pod ❌
+                        ↓
+                    New Pod ✅
+                        ↓
+                Same persistent storage
+                        ↓
+                Data still exists ✅
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Container filesystem
+  - Every container has its own filesystem.
+  - For example:
+
+      containers:
+        - name: mysql
+          image: mysql
+
+  - Inside the container:
+            /
+            ├── bin
+            ├── etc
+            ├── var
+            ├── tmp
+            └── ...
+
+  - If MySQL writes: /var/lib/mysql , that data is tied to the container's writable filesystem.
+
+  - Problem : Containers are considered ephemeral. So we need something outside the container.
+          Container created
+              ↓
+          Data written
+                ↓
+          Container dies
+                ↓
+          Container recreated
+                ↓
+          Old writable filesystem ❌
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+  
+ (*) Kubernetes Storage hierarchy
+
+                        Volume
+                           ↓
+                    PersistentVolume (PV)
+                           ↓
+                  PersistentVolumeClaim (PVC)
+                           ↓
+                       StorageClass
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+  1. Volume
+    - Storage that can be attached to a Pod.
+
+                          Pod
+                ┌───────────────────────┐
+                │                       │
+                │     Container         │
+                │                       │
+                │     /data             │
+                │        ↑              │
+                └────────┼──────────────┘
+                         │
+                         │ mounted
+                         ↓
+                      Storage
+
+    - The application thinks it's simply writing to: /data
+    - But the actual data lives somewhere outside the container filesystem.
+
+volumes:
+  - name: app-storage
+    emptyDir: {}
+
+
+Then mount it:
+
+containers:
+  - name: app
+    image: nginx
+    volumeMounts:
+      - name: app-storage
+        mountPath: /data
+
+Now:
+
+Pod
+│
+├── Container
+│     └── /data
+│
+└── Volume
+      └── app-storage
+
+The application writes: /data/file.txt and that file goes into the mounted volume.
+
+--------------------------------------------------------------------------------------------------
+
+emptyDir
+- This is the easiest volume to understand.
+
+volumes:
+  - name: storage
+    emptyDir: {}
+
+- Kubernetes creates temporary storage when the Pod starts.
+
+        Pod starts
+           ↓
+        emptyDir created
+           ↓
+        Application writes data
+           ↓
+        Pod dies
+           ↓
+        emptyDir deleted
+
+- Therefore "emptyDir" survives container restarts, but does NOT survive Pod deletion.  
+- This makes it useful for:
+    # temporary files
+    # caching
+    # scratch space
+    # sharing files between containers in the same Pod
+
+- Example: Both containers can access the same emptyDir
+
+Pod
+├── nginx container
+│      ↓
+│    /shared
+│      ↑
+│      │
+└── sidecar container
+       ↓
+     /shared
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
