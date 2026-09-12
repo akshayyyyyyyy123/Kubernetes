@@ -1,0 +1,118 @@
+(*) Persistent storage
+
+  - Now imagine a database.
+  - You cannot use emptyDir for important database data.
+  - You need:
+
+                    Pod
+                     ↓
+              Persistent Storage
+                     ↓
+           Data survives Pod deletion
+
+   - This brings us to: PV + PVC
+   - These two are extremely important for Kubernetes interviews.
+   - Kubernetes uses PV and PVC to manage persistent storage.
+
+🔥 REMEMBER
+    PV = storage available
+    PVC = request for storage
+    StorageClass = mechanism that can automatically provision the storage when a PVC requests it.
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(i) PersistentVolume — PV
+  - A PersistentVolume (PV) represents actual persistent storage available to the Kubernetes cluster.
+  - It also represents a piece of persistent storage that Kubernetes can make available to workloads.
+  - In AWS EKS, that storage is often backed by something like an "AWS EBS" volume.
+  - It is the total storage volume defined at the cluster level.
+  - But don't think of PV as necessarily meaning "storage physically created inside the EKS cluster." The PV is a Kubernetes object representing/connecting
+to persistent storage; the actual storage can live outside the cluster.
+
+  - For example:
+          PV
+          │
+          ├── 10 GB
+          ├── persistent
+          └── storage backend
+  - The storage backend could ultimately be something like: AWS EBS, AWS EFS, Azure Disk, GCP Persistent Disk, NFS, Ceph, etc.
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(ii) PersistentVolumeClaim — PVC
+  - PVC (PersistentVolumeClaim) is a workload's request for persistent storage.
+  - A PVC isn't claimed by Kubernetes resources generally. It's specifically a Kubernetes storage request that a Pod/workload uses through the PVC.
+
+  - Example:
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: mysql-pvc
+      spec:
+        accessModes:
+          - ReadWriteOnce
+      
+        resources:
+          requests:
+            storage: 10Gi
+
+  - Meaning: "Kubernetes, please give me 10 GiB of persistent storage that satisfies these requirements."
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------
+
+EKS Cluster
+│
+├── PV X = 100 GiB available storage
+│
+├── Workload A
+│    └── PVC Y = 20 GiB
+│
+├── Workload B
+│    └── PVC Z = 50 GiB
+│
+└── Workload C
+     └── PVC W = 30 GiB
+
+So:
+  PV = 100 GiB
+  PVCs = requests for portions of that storage
+
+- But here's the important part - A PVC cannot claim more than the capacity of a single matching PV.
+- If PV=100 GiB, then
+      PVC = 20 GiB ✅
+      PVC = 80 GiB ✅
+      PVC = 100 GiB ✅
+      PVC = 120 GiB ❌
+
+
+Example 02: Think of PV as an actual storage disk
+- Suppose AWS gives Kubernetes a 100 GiB disk.
+- Kubernetes represents that disk as: PV-1 with Capacity: 100 GiB
+- Now a workload says: "I need 50 GiB of storage."
+- It creates PVC-1 with Request: 50 GiB
+- Kubernetes says: "I have PV-1 with 100 GiB. That's enough for this request."
+- So Kubernetes binds them together:
+              PV-1 (100 GiB)
+                  ↕
+            PVC-1 (requests 50 GiB)
+                  ↓
+                 Pod
+
+*** Now the important rule ***
+  - Once PV-1 is bound to PVC-1, that PV is considered occupied by that PVC.
+  - You don't normally do:
+          PV-1 (100 GiB)
+             ├── PVC-1 (50 GiB)
+             └── PVC-2 (50 GiB) ❌
+  - Instead: PV-1 (100 GiB)  ←→  PVC-1 (50 GiB)
+  - The remaining 50 GiB isn't available as a separate PVC just because the disk has unused capacity.
+  - This is because a PV represents one persistent storage resource, and a PVC is the claim that gets bound to that resource.
+  - So remember: 1 PV ↔ 1 PVC is the normal binding relationship.
+  ****** - But:  1 PVC → 1 Pod is NOT necessarily true. *****
+  - Multiple Pods can use the same PVC depending on the storage's access mode.
+  - For example:
+              PVC-1
+               │
+        ┌──────┴──────┐
+        ↓             ↓
+      Pod-A          Pod-B
