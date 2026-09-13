@@ -1,0 +1,176 @@
+Kubernetes hostPath
+
+- We've learned:
+      emptyDir
+         ↓
+      Temporary storage associated with the Pod
+         ↓
+      Pod deleted → data gone
+
+- Now the question is: Can a Pod directly use a directory that exists on the Kubernetes Node?
+- Yes. That's hostPath.
+
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+🔥 hostPath
+
+        Pod
+         ↓
+      hostPath
+         ↓
+  Specific directory on Node
+
+- The directory belongs to the Node, not the Pod.
+- Therefore: Pod deleted -> hostPath directory -> still exists on Node ✅
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+🧩 Example
+  - Suppose your Minikube Node has: /mnt/k8s-data
+  - and we want the Pod to see it as: /data
+
+  - We write,
+      volumes:
+        - name: node-storage
+          hostPath:
+            path: /mnt/k8s-data
+            type: DirectoryOrCreate
+
+  - Then,
+      volumeMounts:
+        - name: node-storage
+          mountPath: /data
+
+  - So,
+      Minikube Node
+      │
+      └── /mnt/k8s-data
+              │
+              │ hostPath
+              ↓
+      Pod
+      │
+      └── /data
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+What is DirectoryOrCreate?
+  - type: DirectoryOrCreate
+  - It means, "If /mnt/k8s-data doesn't exist on the Node, create it."
+  - If directory exists, use it... else create it.
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+🧩 EXPERIMENT
+
+PHASE : Create our Pod
+
+hostpath.yaml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: hostpath-demo
+spec:
+  containers:
+    - name: hostpath-container
+      image: nginx:alpine
+      ports:
+        - containerPort: 80
+      
+      volumeMounts:
+        - name: node-storage
+          mountPath: /data
+    
+  volumes:
+    - name: node-storage
+      hostPath:
+        path: /mnt/k8s-data
+        type: DirectoryOrCreate
+
+
+# minikube ssh                                                                                                                                        
+docker@minikube:~$ ls
+
+docker@minikube:~$ sudo mkdir -p /mnt/k8s-data
+
+docker@minikube:~$ ls -ld /mnt/k8s-data
+drwxr-xr-x 2 root root 4096 Sep 13 12:03 /mnt/k8s-data
+
+docker@minikube:/mnt/k8s-data$ sudo touch abc
+docker@minikube:/mnt/k8s-data$ ls
+abc
+
+# kubectl apply -f hostpath.yaml                                                                                                                         
+pod/hostpath-demo created
+
+# kubectl exec hostpath-demo -- ls /data                                                                                                             
+abc
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) PHASE - Delete the Pod
+
+# kubectl delete pod hostpath-demo
+pod "hostpath-demo" deleted from default namespace
+
+# kubectl apply -f pod6.yaml                                                                                                                          
+pod/hostpath-demo created
+
+# kubectl exec hostpath-demo -- ls /data
+abc
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Why did the data survive?
+
+      Pod deleted
+          ↓
+      Pod's hostPath mount disappears
+          ↓
+      Node directory remains
+          ↓
+      New Pod mounts same directory
+          ↓
+      Old file is still there
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+🚨 But hostPath has a BIG problem
+
+- Imagine you have:
+        Node 1 ==> /mnt/k8s-data
+
+- Your Pod is running here: Pod1 --> Node1
+- The Pod writes: /mnt/k8s-data/test.txt
+
+- Now Kubernetes reschedules the Pod onto Node 2:
+      Node 1                    Node 2
+         │                         │
+         │                         └── Pod
+         │
+         └── test.txt
+- Node 2 might not have: /mnt/k8s-data/test.txt ... So the application doesn't see the same data.
+- That's why hostPath is generally not the solution for production persistent application storage in a multi-node cluster.
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+🎯 Where is hostPath useful?
+- Mostly things like:
+    * node-level agents
+    * logs
+    * monitoring
+    * accessing files that already exist on the node
+    * special infrastructure workloads
+- But for a production database: ❌ hostPath
+- You'd generally want proper persistent storage:
+      ✅ PV
+      ✅ PVC
+      ✅ StorageClass
+
+
+🔥 Interview-ready definition
+  'hostPath' is a Kubernetes volume type that mounts a file or directory from the Node's filesystem into a Pod. The data survives Pod deletion, but it is tied to that 
+particular Node, making it unsuitable for most portable production persistent-storage use cases.
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------
