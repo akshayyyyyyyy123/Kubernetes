@@ -1,0 +1,150 @@
+Kubernetes Volume
+
+First: What problem are we solving?
+  - We already established, Container filesystem is temporary.
+  - So Kubernetes gives us a mechanism to attach storage to a Pod.
+  - That mechanism is called a Volume.
+
+What exactly is a Volume?
+  - A Kubernetes Volume is a storage resource that can be mounted into a Pod's containers.
+  - It allows containers to store/access data separately from their normal container filesystem.
+  - The important thing is -> Container filesystem ≠ Volume
+  - The Volume is attached/mounted to the container.
+
+  - Container runs inside the pod
+      🏠 Pod
+      │
+      └── 📦 Container
+
+  - Now you bring a storage box (volume) into the pod... The container can access that storage box by mounting it at a path.
+      🏠 Pod
+      │
+      ├── 📦 Container
+      │
+      └── 📦 Volume
+
+   - For example: /data
+
+    Container
+        │
+        │ writes /data/file.txt
+        ↓
+    Volume
+        │
+        └── file.txt
+
+-------------------------------------------------------------------------------------------------------------------------------------------------
+
+Our first Volume: emptyDir
+
+- Kubernetes has many volume types.
+- But we're going to start with the simplest: emptyDir: {}
+
+
+* What does emptyDir mean?
+- It literally means give this Pod an empty directory when it starts.
+Example:
+
+  volumes:
+    - name: my-storage
+      emptyDir: {}
+
+Then we mount it:
+  volumeMounts:
+    - name: my-storage
+      mountPath: /data
+
+- Now the container sees: /data and can write files there.
+
+-------------------------------------------------------------------------------------------------------------------------------------------------
+
+🧩 Complete example
+Let's create a very simple Pod:
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod5
+spec:
+  containers:
+  - name: container5
+    image: nginx:alpine
+    ports:
+    - containerPort: 80
+  
+    volumeMounts:
+    - name: app-volume
+      mountPath: /data
+  
+  volumes:
+  - name: app-volume
+    emptyDir: {}
+
+
+🔬 Let's understand what happens
+- When Kubernetes creates the Pod:
+        Pod
+        │
+        ├── Container
+        │      │
+        │      └── /data
+        │
+        └── emptyDir
+- The application writes: echo "Hello Kubernetes" > /data/test.txt
+
+
+╭─    ~/Desktop/EKS-Learnings/pods    main !1 ?6 ─────────────────────────────────────────────────────────────────── ✔  minikube 󱃾  15:58:37  ─╮
+╰─ kubectl exec -it pod5 -- sh                                                                                                                         ─╯
+/ # ls data/
+/ # echo "Hello K8s" >> /data/f1.txt
+/ # exit
+
+╭─    ~/Desktop/EKS-Learnings/pods    main !1 ?6 ─────────────────────────────────────────────────────────── ✔  33s   minikube 󱃾  16:01:58  ─╮
+╰─ kubectl exec pod5 -- cat /data/f1.txt                                                                                                               ─╯
+Hello K8s
+
+---------------------------------------------------------------------------------------------------------------------------------------------------------
+
+🚨 The most important property of emptyDir
+  - Suppose the container crashes. Container gets restarted. The Pod still exists.
+  - Therefore "emptyDir" still exists ✅
+  - So the file can still be there. 
+  - But if the Pod itself is deleted then data gone. 
+
+              Pod deleted
+                ↓
+            emptyDir deleted ❌
+                ↓
+            data gone
+
+**** Therefore emptyDir survives container restarts, but does not survive Pod deletion *****
+
+---------------------------------------------------------------------------------------------------------------------------------------------------------
+
+🎯 What is emptyDir actually useful for?
+  - Because the data isn't persistent, we don't use it for important databases.
+  - It's useful for temporary/shared data.
+
+  - Example: Both containers can access the same emptyDir.
+
+         Pod
+          │
+          ├── nginx container
+          │      │
+          │      └── /shared
+          │
+          └── sidecar container
+                 │
+                 └── /shared
+
+  - Common use cases:
+      * temporary files
+      * caching
+      * scratch space
+      * sharing files between containers in the same Pod
+
+🔥 Interview-ready definition
+  emptyDir is a Kubernetes volume that provides temporary storage shared by containers within a Pod. It is created when the Pod is created and deleted when the
+Pod is deleted.
+
+---------------------------------------------------------------------------------------------------------------------------------------------------------
