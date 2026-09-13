@@ -1,0 +1,92 @@
+1️⃣ Why do we need Kubernetes Storage?
+  - Let's forget Kubernetes for a moment.
+  - Imagine you have a MySQL container:
+
+      ┌─────────────────────────┐
+      │       Container         │
+      │                         │
+      │       MySQL             │
+      │                         │
+      │   /var/lib/mysql        │
+      │        ↓                │
+      │   Database data         │
+      └─────────────────────────┘
+
+  - Suppose MySQL stores: users, orders, payments
+  - Now the container crashes. Kubernetes creates another container.
+  - The new container has its own filesystem.
+ 
+  OLD CONTAINER                       NEW CONTAINER
+
+/var/lib/mysql                       /var/lib/mysql
+├── users                            ├── EMPTY
+├── orders
+└── payments
+    ❌
+
+🔥 The problem
+  - The container's filesystem is ephemeral.
+  - In simple words: Container filesystem = temporary storage
+  - If the container is removed/recreated, data stored only there can disappear.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+2️⃣ But there is an important distinction
+  - Don't think, "Whenever a container restarts, all data is lost." That's too broad.
+
+  - For example:
+      Container crashes
+             ↓
+    Kubernetes restarts container
+             ↓
+        Same Pod
+
+  - Depending on how the container is restarted, its writable filesystem may remain.
+  - The bigger problem is: Pod gets deleted/recreated or the workload moves to another node.
+  - Then relying on the container's local writable filesystem is unsafe for important data.
+  - So for databases and other stateful applications:
+        ❌ Don't depend on container filesystem
+        ✅ Use persistent storage
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+3️⃣ What do we actually want?
+  - We want the data to live outside the Pod/container lifecycle.
+
+  - Instead of:
+      Pod
+       │
+       └── Container
+             │
+             └── Data ❌
+
+  - we want:
+     Pod
+     │
+     └── Container
+           │
+           └── /data
+                │
+                ↓
+           Persistent Storage
+                │
+                ↓
+               Data
+
+  - Now:
+          Pod deleted
+             ↓
+        Storage remains
+             ↓
+        New Pod created
+             ↓
+        Storage mounted again
+             ↓
+        Data still exists ✅
+
+  - That's the fundamental purpose of Kubernetes persistent storage.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+🔥 Remember this one line
+Pods are ephemeral, but application data often needs to be persistent.
