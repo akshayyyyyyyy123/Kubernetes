@@ -148,3 +148,28 @@ Hello K8s
 Pod is deleted.
 
 ---------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Now comes the important experiment 🔥
+
+- We want to prove, "emptyDir survives a container restart."
+
+- First check the Pod.. You'll see something like: RESTARTS   0
+# kubectl get pods                                                                                                                                   
+NAME   READY   STATUS    RESTARTS   AGE
+pod5   1/1     Running   0          29m
+
+- Now let's deliberately kill the nginx container process... Kubernetes should restart the container.
+# kubectl exec pod5 -- sh -c 'kill 1'
+
+- Check the pod now. The container restarted.
+# kubectl get pods                                                                                                                                    
+NAME   READY   STATUS    RESTARTS     AGE
+pod5   1/1     Running   1 (4s ago)   29m
+
+- Now check the file:
+# kubectl exec pod5 -- cat /data/f1.txt
+Hello K8s
+
+- We've proved that emptyDir survives a container restart.
+
+---------------------------------------------------------------------------------------------------------------------------------------------------------
