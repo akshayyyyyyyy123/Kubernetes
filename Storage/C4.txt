@@ -74,4 +74,6 @@ Azure Disk, GCP Persistent Disk, etc..
                                                           ↓
                                                          Pod
 
+ - One important distinction: PV is not the actual EBS volume. It is the Kubernetes representation/configuration that points to or represents that underlying storage.
+
 ---------------------------------------------------------------------------------------------------------------------------------------------------------
