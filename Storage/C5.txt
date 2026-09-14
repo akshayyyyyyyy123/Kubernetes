@@ -1,0 +1,90 @@
+(*) PersistentVolumeClaim (PVC)
+
+- The key question is, "If PV represents storage available to Kubernetes, how does my application ask Kubernetes for storage?"
+- That's exactly what PVC solves. Our flow will become:
+
+                                      Application
+                                          ↓
+                                         Pod
+                                          ↓
+                                         PVC       ← "I need 10Gi of storage"
+                                          ↓
+                                         PV        ← "Here is 10Gi of persistent storage"
+                                          ↓
+                                      AWS EBS / EFS / NFS / etc.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+🔥 PV vs PVC
+  - The most important line, "PV provides storage. PVC requests storage."
+
+|              | PV                | PVC                  |
+| ------------ | ----------------- | -------------------- |
+| Meaning      | Storage available | Request for storage  |
+| Created for  | Cluster           | Application/workload |
+| Example      | 10Gi storage      | "I need 10Gi"        |
+| Scope        | Cluster-wide      | Namespace            |
+| Relationship | Provides storage  | Requests storage     |
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+How does the Pod use it?
+- A Pod needs storage, but instead of saying: "Give me this PV", the Pod says: "Give me this PVC."
+- The PVC then points to the PV.
+
+            Pod
+             │
+             │ asks for
+             ↓
+            PVC
+             │
+             │ is bound to
+             ↓
+            PV
+             │
+             │ represents
+             ↓
+            Actual Storage
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Why this separation?
+- Imagine:
+    PV = 10 GB storage available
+    PVC = "My application needs 10 GB"
+
+- Kubernetes connects them:
+    PVC ─────────→ PV
+  10 GB           10 GB
+
+- Then the Pod uses the PVC: Pod → PVC → PV → Storage
+
+- So remember this
+❌ Pod → PV directly
+✅ Pod → PVC → PV → actual storage
+
+- Pod uses PVC, this PVC is bound to PV which is backed by AWS EBS.
+
+Pod
+ │
+ │ uses
+ ↓
+PVC
+ │
+ │ bound to
+ ↓
+PV
+ │
+ │ backed by
+ ↓
+AWS EBS
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Interview-ready definition 🎯
+- A PersistentVolumeClaim (PVC) is a Kubernetes resource used by applications to request persistent storage with requirements such as capacity and access mode. 
+Kubernetes then binds the PVC to a suitable PersistentVolume.
+
+- One line to remember
+  PV = storage available
+  PVC = storage requested
