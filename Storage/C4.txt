@@ -1,0 +1,77 @@
+(*) PersistentVolume — PV  
+  - A PV represents actual persistent storage available to the Kubernetes cluster.
+  - PV = actual storage resource
+  - A PersistentVolume (PV) is a Kubernetes resource that represents persistent storage available to the cluster.
+  - It abstracts the underlying storage from the application.
+
+  - Examples of underlying storage:
+    * AWS EBS
+    * AWS EFS
+    * NFS
+    * Azure Disk
+    * GCP Persistent Disk
+    * Ceph
+
+  - Imagine you have a 3-node cluster:
+
+               Kubernetes Cluster
+        ┌─────────┬─────────┬─────────┐
+        ↓         ↓         ↓         ↓
+      Node 1    Node 2    Node 3     Node 4
+
+  - And your application needs: 100 GB persistent storage
+  - You don't want the application to care about:
+        * Which node?
+        * Which disk?
+        * Which storage backend?
+        * Which cloud volume?
+  - You want Kubernetes to abstract that. That's where PersistentVolume (PV) comes in.
+
+      Kubernetes Cluster
+              ↓
+             PV
+              ↓
+      Persistent Storage
+
+  - A PersistentVolume (PV) is a Kubernetes storage resource representing persistent storage provisioned for use by workloads, abstracting the 
+underlying storage implementation from the application.
+
+(*) Why do we need PV?
+
+  # emptyDir:
+      Pod deleted → data gone
+
+  # hostPath:
+      Data survives Pod deletion BUT storage is tied to a particular Node
+
+  # PV:
+      Provides a Kubernetes abstraction for persistent storage that can be consumed by workloads.
+
+---------------------------------------------------------------------------------------------------------------------------------------------------------
+
+🔥🔥🔥 Interview definition 🔥🔥🔥
+  - A PersistentVolume (PV) is a Kubernetes storage resource representing persistent storage provisioned for use by workloads, abstracting the 
+underlying storage implementation from the application.
+  - PV is "Kubernetes representation of a piece of persistent storage." The actual storage could be backed by AWS EBS, AWS EFS, etc.
+
+                                                      Kubernetes
+                                                          │
+                                                          ↓
+                                                         PV
+                                                          │
+                                                          ↓
+                                                    Actual storage
+
+  - A PersistentVolume (PV) is a Kubernetes abstraction/representation of persistent storage that is made available to the cluster.
+  - PV = Kubernetes object representing that persistent storage. And that persistent storage can be backed by: AWS EBS, AWS EFS, NFS,
+Azure Disk, GCP Persistent Disk, etc..
+
+                                                     AWS EBS Volume
+                                                          ↓
+                                                    PV (Kubernetes object)
+                                                          ↓
+                                                         PVC
+                                                          ↓
+                                                         Pod
+
+---------------------------------------------------------------------------------------------------------------------------------------------------------
