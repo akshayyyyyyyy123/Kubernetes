@@ -88,3 +88,40 @@ Kubernetes then binds the PVC to a suitable PersistentVolume.
 - One line to remember
   PV = storage available
   PVC = storage requested
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+🔗 PV ↔ PVC Binding
+- Suppose you have:
+PV : 10Gi and RWO
+And your application creates: PVC, requests: 10Gi, RWO... now Kubernetes looks for a suitable PV:
+
+                          PVC
+                      "I need 10Gi"
+                           ↓
+                        Kubernetes
+                           ↓
+                          PV
+                      "Here is 10Gi"
+                           ↓
+                      STATUS: Bound
+
+You can see it with:
+# kubectl get pv
+# kubectl get pvc
+
+* You'll typically see: 
+PV              STATUS
+pv-storage      Bound
+
+PVC             STATUS
+my-pvc          Bound
+
+
+Important
+- Once a PVC is successfully matched with a PV:
+      PVC ───────────→ PV
+           Bound
+The Pod can then use that PVC.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
