@@ -1,0 +1,283 @@
+Static provisioning model hands-on
+- Let's do the PV + PVC hands-on experiment on Minikube.
+
+Step 1 — Create storage on the Minikube Node
+Run: minikube ssh
+
+# minikube ssh                                                                                                                                        
+docker@minikube:~$ sudo mkdir -p /mnt/pv-data
+docker@minikube:~$ sudo chmod 777 /mnt/pv-data
+docker@minikube:~$ exit
+logout
+
+----------------------------------------------------------------------------------------------------------------------------------
+
+Step 2 — Create the PV
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: my-pv
+spec:
+  capacity:
+    storage: 1Gi
+
+  accessModes:
+    - ReadWriteOnce
+
+  persistentVolumeReclaimPolicy: Retain
+
+  storageClassName: manual
+
+  hostPath:
+    path: /mnt/pv-data
+    type: Directory
+
+Apply it: 
+# kubectl apply -f pv.yaml                                                                                                                          
+persistentvolume/my-pv created
+
+# kubectl get pv
+NAME    CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS      CLAIM   STORAGECLASS   VOLUMEATTRIBUTESCLASS   REASON   AGE
+my-pv   1Gi        RWO            Retain           Available           manual         <unset>                          9s
+
+Notice: STATUS = Available, which clearly means the PV exists, but nobody has requested it yet.
+
+----------------------------------------------------------------------------------------------------------------------------------
+
+Step 3 — Create the PVC
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: my-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+
+  resources:
+    requests:
+      storage: 1Gi
+
+  storageClassName: manual
+
+** NOTICE **
+
+# kubectl get pvc                                                                                                                                     
+NAME     STATUS   VOLUME   CAPACITY   ACCESS MODES   STORAGECLASS   VOLUMEATTRIBUTESCLASS   AGE
+my-pvc   Bound    my-pv    1Gi        RWO            manual         <unset>                 11s
+
+# kubectl get pv                                                                                                                                      
+NAME    CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS   CLAIM            STORAGECLASS   VOLUMEATTRIBUTESCLASS   REASON   AGE
+my-pv   1Gi        RWO            Retain           Bound    default/my-pvc   manual         <unset>                          32m
+
+PVC
+ │
+ │ Bound
+ ↓
+PV
+
+----------------------------------------------------------------------------------------------------------------------------------
+
+Step 4 — Now connect the PVC to a Pod
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pvc-demo
+spec:
+  containers:
+    - name: nginx-container
+      image: nginx:alpine
+      ports:
+        - containerPort: 80
+      
+      volumeMounts:
+        - name: my-pv-storage
+          mountPath: /mnt-data
+
+  volumes:
+    - name: my-pv-storage
+      persistentVolumeClaim:
+        claimName: my-pvc
+
+# kubectl apply -f pod.yaml
+
+# kubectl get pods
+NAME            READY   STATUS    RESTARTS      AGE
+pvc-demo        1/1     Running   0             6m12s
+
+----------------------------------------------------------------------------------------------------------------------------------
+
+Step 5 — Write data
+
+# kubectl exec -it pvc-demo -- sh                                                                                                                     
+/ # ls
+bin                   etc                   mnt                   root                  sys
+dev                   home                  mnt-data              run                   tmp
+docker-entrypoint.d   lib                   opt                   sbin                  usr
+docker-entrypoint.sh  media                 proc                  srv                   var
+
+/ # cd mnt-data/
+/mnt-data # echo "Hello from PVC!!" >> abc.txt
+/mnt-data # ls
+abc.txt
+/mnt-data # cat abc.txt
+Hello from PVC!!
+/mnt-data # exit
+
+
+# kubectl exec pvc-demo -- cat /data/test.txt
+Hello from PVC!!
+
+----------------------------------------------------------------------------------------------------------------------------------
+
+Complete Architecture:
+
+                    Kubernetes
+                         │
+                         │
+                       Pod
+                         │
+                         │ uses
+                         ↓
+                       PVC
+                     my-pvc
+                         │
+                         │ Bound
+                         ↓
+                        PV
+                      my-pv
+                         │
+                         │ backed by
+                         ↓
+                  /mnt/pv-data
+                Minikube Node
+
+----------------------------------------------------------------------------------------------------------------------------------
+
+(*) Important Observation
+
+- In EKS, an EBS volume is like a virtual hard disk. 
+- This is the actual storage where data can physically live.
+
+                                          AWS EBS Volume
+                                               ↓
+                                             100 GiB
+
+
+
+- Kubernetes needs to know about that persistent storage. So we create a PersistentVolume (PV).
+- The PV is a Kubernetes object that represents available persistent storage.
+- PV is not itself the physical disk. It represents/points to the underlying storage.
+
+                                      EBS Volume (actual storage)
+                                                ↓
+                                               PV
+For example:-
+      capacity:
+        storage: 100Gi
+      
+      accessModes:
+        - ReadWriteOnce
+
+This tells Kubernetes things such as:
+  * This storage represents 100Gi
+  * It supports ReadWriteOnce
+  * What StorageClass it belongs to
+  * What should happen when the claim is deleted
+  * Where the actual storage comes from
+
+
+- One Cluster Can Have Many PVs  
+  * An EKS cluster can have N PVs, subject to Kubernetes and storage-provider limits.
+  * Normally, each PV corresponds to an underlying storage resource.
+  * Don't normally think of one 100-GiB EBS volume as being divided into multiple PVs.
+
+    EKS Cluster
+    │
+    ├── PV-1 → EBS Volume 100Gi
+    ├── PV-2 → EBS Volume 50Gi
+    ├── PV-3 → EBS Volume 20Gi
+    └── PV-4 → EBS Volume 200Gi
+
+
+- PVC = Request/Claim for Storage
+- Now your application needs storage. We create a PersistentVolumeClaim (PVC).
+- For example:- This means, "I need 20Gi of persistent storage."
+    resources:
+      requests:
+        storage: 20Gi
+
+
+
+- Kubernetes Binds PVC to PV
+- Kubernetes looks for a suitable PV.
+- Example:
+            PVC
+            "I need 20Gi"
+                  ↓
+            Kubernetes searches
+                  ↓
+            PV
+            "I provide 20Gi"
+                  ↓
+                 BOUND
+- You normally don't manually bind them. 
+- Kubernetes performs the binding when the requirements match.
+- The Pod normally doesn't directly claim the PV. The PVC is the request/claim. 
+
+
+
+- Pod Uses the PVC
+- The Pod references the PVC, not normally the PV directly.
+- Pod => PVC => PV => EBS
+- The Pod can then mount the storage inside its container: EBS => PV => PVC => Pod => /data
+- The application can now read/write persistent data under /data.
+
+
+🔥🔥🔥🔥 Complete Picture 🔥🔥🔥🔥
+
+                AWS
+                 │
+                 ▼
+          ┌─────────────┐
+          │ EBS Volume  │
+          │   100 GiB   │
+          └──────┬──────┘
+                 │
+                 │ represents
+                 ▼
+          ┌─────────────┐
+          │     PV      │
+          │   100 GiB   │
+          └──────┬──────┘
+                 │
+              BINDING
+                 │
+                 ▼
+          ┌─────────────┐
+          │     PVC     │
+          │  requests   │
+          │    100Gi    │
+          └──────┬──────┘
+                 │
+              used by
+                 ▼
+          ┌─────────────┐
+          │     Pod     │
+          │             │
+          │ /data       │
+          └─────────────┘
+
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+🧠 Remember these 4 lines
+
+EBS: "I am the actual virtual hard disk."
+PV: "I am Kubernetes' representation of available persistent storage."
+PVC: "I need/claim this amount of persistent storage."
+Pod: "I will use the PVC to access that storage."
+And the flow is: Actual Storage → PV → PVC → Pod
+That's the core of Kubernetes persistent storage.
