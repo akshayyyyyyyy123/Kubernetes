@@ -1,0 +1,99 @@
+
+StorageClass
+  - A StorageClass is a Kubernetes API object that defines how persistent storage should be provisioned.
+  - It primarily specifies:  
+      * Provisioner — which component is responsible for creating the storage
+      * Parameters — configuration passed to the provisioner
+      * Reclaim policy — what happens to the PV after the claim is released
+      * Volume binding mode — when the volume should be provisioned/bound
+
+
+Why do we need it?
+  - Without StorageClass, we can manually create: PV → PVC → Pod
+  - This is static provisioning.
+  - With StorageClass, Kubernetes can automatically provision the required storage when a PVC is created. 
+  - This is dynamic provisioning.
+
+                                          PVC
+                                           ↓
+                                       StorageClass
+                                           ↓
+                                       Provisioner
+                                           ↓
+                                           PV
+                                           ↓
+                                          Pod
+
+
+What is a Provisioner?
+  - A provisioner is the component responsible for actually creating/providing the storage requested through a StorageClass.
+
+  - In your Minikube StorageClass:
+        StorageClass
+        NAME: standard
+
+        PROVISIONER:
+        k8s.io/minikube-hostpath
+
+  - k8s.io/minikube-hostpath identifies the provisioner used by Minikube.
+
+  - When a PVC requests storage: In MINIKUBE
+
+                    PVC, "I need 1Gi"
+                         ↓
+                  StorageClass: standard
+                         ↓
+            Provisioner: k8s.io/minikube-hostpath
+                         ↓
+                  Storage is provisioned
+                         ↓
+                   PV is created
+                         ↓
+                    PVC → Bound
+- In Minikube, we have a StorageClass called standard, which uses the k8s.io/minikube-hostpath provisioner. The provisioner is responsible for fulfilling storage
+requests made through a PVC using that StorageClass, including provisioning the underlying storage and creating the corresponding PV.
+
+
+In AWS EKS
+  The same concept exists, but the provisioner would typically be an AWS CSI driver, for example:
+
+                      StorageClass
+                           ↓
+                    EBS CSI provisioner
+                           ↓
+                      AWS EBS volume
+                           ↓
+                          PV
+
+Provisioner = the component that performs the actual storage provisioning requested by the StorageClass.
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Dynamic Provisioning
+
+- Dynamic Provisioning is the automatic creation of persistent storage when a PVC requests storage through a StorageClass.
+- With dynamic provisioning: 
+      PVC => StorageClass => Provisioner => Storage gets created => PV is created => PVC → Bound
+
+
+In your Minikube
+You have:
+    StorageClass: standard
+    Provisioner: k8s.io/minikube-hostpath
+
+
+So when you create a PVC like:
+    spec:
+      storageClassName: standard
+      resources:
+        requests:
+          storage: 1Gi
+
+you are essentially telling Kubernetes, "I need 1Gi of storage. Use the standard StorageClass to provision it."
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) The important difference
+
+Static provisioning: You create PV → PVC claims it
+Dynamic provisioning: You create PVC → Kubernetes provisions PV automatically
