@@ -1,0 +1,117 @@
+StorageClass
+
+- So far, we manually created: PV -> PVC -> Pod
+- And our process was:
+    * Manually create storage on Node
+    * Manually create PV
+    * Create PVC
+    * Kubernetes binds PVC → PV
+    * Pod uses PVC
+
+
+The problem 🤔
+  - Imagine you have 100 applications.
+  - Would you want to manually create: pv-01, pv-02, pv-03, ..., pv-100. Obviously not.
+  - That's where StorageClass comes in.
+
+
+Simple definition
+  - StorageClass tells Kubernetes HOW to provision storage.
+  - Think of it as a storage template / storage blueprint.
+  - StorageClass itself isn't the storage. It doesn't contain the 100Gi disk.
+  - Instead, it defines how/which provisioner should create the storage.
+
+
+🎯 Interview-ready definition
+  - A StorageClass is a Kubernetes resource that defines a class of storage and the provisioner/parameters used to dynamically provision PersistentVolumes for
+PersistentVolumeClaims.
+
+                          PVC
+                      "I need 10Gi"
+                           ↓
+                      StorageClass
+          "Here's how to create/provision that storage"
+                           ↓
+                    Storage backend
+                           ↓
+                        New PV
+                           ↓
+                    PVC becomes Bound
+
+
+In AWS/EKS
+  - Eventually you'll see something like:
+
+                        Pod
+                         ↓
+                        PVC
+                         ↓
+                    StorageClass
+                         ↓
+                    EBS CSI Driver
+                         ↓
+                    AWS EBS Volume
+                         ↓
+                        PV
+
+--------------------------------------------------------------------------------------------------------------------------------------------
+
+🧠 What does StorageClass solve?
+  - A StorageClass tells Kubernetes how to provision storage when a PVC requests it.
+
+                                  StorageClass
+                                       │
+                                       │ defines HOW storage should be created
+                                       ↓
+                                Storage backend
+                                       │
+                                       ↓
+                                      PV
+
+
+  - This is called Dynamic Provisioning.
+
+--------------------------------------------------------------------------------------------------------------------------------------------
+
+* The big difference
+  - What we did earlier — Static Provisioning
+  - We manually created the PV ===>  Admin -> Creates PV -> PVC -> PVC binds to PV
+
+StorageClass — Dynamic Provisioning
+  - We don't manually create the PV:
+
+                                      PVC
+                                       ↓
+                                  StorageClass
+                                       ↓
+                              Storage is provisioned automatically
+                                       ↓
+                              PV created automatically
+                                       ↓
+                                   PVC → Bound
+
+  - 🔥 That's the major reason StorageClass exists.
+
+--------------------------------------------------------------------------------------------------------------------------------------------
+
+In AWS EKS the workflow be like:
+
+                                      PVC
+                                       │
+                                       │ "I need 20Gi"
+                                       ↓
+                                  StorageClass
+                                       │
+                                       ↓
+                                  EBS CSI Driver
+                                       │
+                                       ↓
+                                  AWS EBS Volume
+                                       │
+                                       ↓
+                                      PV
+                                       │
+                                       ↓
+                                  PVC → Bound
+
+- So the developer/application doesn't need to manually create an EBS volume and PV every time.
