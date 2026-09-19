@@ -1,0 +1,109 @@
+Hands-on: StorageClass + Dynamic Provisioning
+
+STEP 01: Check the storage class
+
+# kubectl get storageclass
+NAME                 PROVISIONER                RECLAIMPOLICY   VOLUMEBINDINGMODE   ALLOWVOLUMEEXPANSION   AGE
+standard (default)   k8s.io/minikube-hostpath   Delete          Immediate           false                  6d
+
+- In minikube, by default we get a storage class. As learnt in the previous lessons, here we need to create only PVC.
+
+--------------------------------------------------------------------------------------------------------------------------------------------
+
+STEP 02: Create PVC
+  
+* dynamic-pvc.yaml
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: dynamic-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+# kubectl apply -f dynamic-pvc.yaml                                                                                                                  
+persistentvolumeclaim/dynamic-pvc created
+
+# kubectl get pvc
+NAME            STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   VOLUMEATTRIBUTESCLASS   AGE
+dynamic-pvc     Bound    pvc-9765cc85-b95f-4fc3-b942-252e95f7e1ec   1Gi        RWO            standard       <unset>                 9s
+
+# kubectl get pv
+NAME                                       CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS   CLAIM                 STORAGECLASS   VOLUMEATTRIBUTESCLASS  AGE
+pvc-9765cc85-b95f-4fc3-b942-252e95f7e1ec      1Gi        RWO            Delete        Bound    default/dynamic-pvc   standard       <unset>                98s
+
+- Here we notice, a new PV is created automatically / dynamically. 
+- This is the kubernetes representation of the persistent volume - pvc-9765cc85-b95f-4fc3-b942-252e95f7e1ec
+- This dynamically created PV is already binded to the dynamic-pvc PVC.
+      pvc-9765cc85-b95f-4fc3-b942-252e95f7e1ec => dynamic-pvc
+
+--------------------------------------------------------------------------------------------------------------------------------------------
+
+STEP 03: Create Pod and claim the dynamic pvc
+
+* dynamic-pod.yaml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: dynamic-pod
+spec:
+  containers:
+    - name: nginx
+      image: nginx:alpine
+      volumeMounts:
+        - name: storage
+          mountPath: /data
+
+  volumes:
+    - name: storage
+      persistentVolumeClaim:
+        claimName: dynamic-pvc
+
+          
+ # kubectl apply -f dynamic-pod.yaml
+pod/dynamic-pod created
+
+
+# kubectl get pod dynamic-pod                                                                                                                        
+NAME          READY   STATUS    RESTARTS   AGE
+dynamic-pod   1/1     Running   0          3m1s
+
+  
+# kubectl describe pod dynamic-pod
+Name:             dynamic-pod
+Volumes:
+  storage:
+    Type:       PersistentVolumeClaim (a reference to a PersistentVolumeClaim in the same namespace)
+    ClaimName:  dynamic-pvc
+    ReadOnly:   false
+
+  
+(*) Once it's Running, write:
+  # kubectl exec dynamic-pod -- sh -c 'echo "Dynamic Provisioning works" > /data/test.txt'
+
+  
+(*) Verify:
+  # kubectl exec dynamic-pod -- cat /data/test.txt
+Dynamic Provisioning works
+
+
+(*) Then delete the Pod and recreate it:
+ # kubectl delete pod dynamic-pod
+pod "dynamic-pod" deleted from default namespace
+ # kubectl apply -f dynamic-pod.yaml
+pod/dynamic-pod created
+
+(*) Finally:
+# kubectl exec dynamic-pod -- cat /data/test.txt                                                                                                      
+Dynamic Provisioning works
+
+StorageClass → Dynamic Provisioning → PV → PVC → Pod → Persistent Data. ✅
+  
+
+
+
