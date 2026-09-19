@@ -1,0 +1,199 @@
+- With Minikube only, you cannot create a real AWS EBS-backed PV because EBS is an AWS service and your Minikube cluster isn't running inside AWS.
+
+- For our local hands-on, we'll do:
+                                          Minikube
+                                             ↓
+                                            PV
+                                             ↓
+                                          hostPath
+                                             ↓
+                                      Minikube Node filesystem
+
+- Whereas in real EKS:
+                                          EKS
+                                           ↓
+                                          PV
+                                           ↓
+                                      EBS CSI Driver
+                                           ↓
+                                        AWS EBS
+
+
+---------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Step 01: Create a directory inside the minikube node
+
+# minikube ssh
+docker@minikube:~$ sudo mkdir -p /mnt/pv-02
+docker@minikube:~$ sudo chmod 777 /mnt/pv-02/
+docker@minikube:~$ ls -ld /mnt/pv-02/
+drwxrwxrwx 2 root root 4096 Sep 19 08:30 /mnt/pv-02/
+docker@minikube:~$
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Step 02 — Create the PV
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-02
+spec:
+  capacity:
+    storage: 1Gi
+
+  accessModes:
+    - ReadWriteOnce
+
+  persistentVolumeReclaimPolicy: Retain
+
+  storageClassName: manual
+
+  hostPath:
+    path: /mnt/pv-02
+    type: Directory
+
+
+# kubectl apply -f pv.yaml                                                                                                                            
+persistentvolume/pv-02 created
+
+
+# kubectl get pv                                                                                                                                     
+NAME    CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS      CLAIM            STORAGECLASS   VOLUMEATTRIBUTESCLASS   REASON   AGE
+pv-02   1Gi        RWO            Retain           Available                    manual         <unset>                          14s
+
+
+The important part is => STATUS = Available
+Because we have created the PV, but no PVC has claimed it yet. 
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Step 3 — Create the PVC
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pvc-02
+spec:
+  accessModes:
+    - ReadWriteOnce
+
+  resources:
+    requests:
+      storage: 1Gi
+
+  storageClassName: manual
+
+
+# kubectl apply -f pvc.yaml
+persistentvolumeclaim/pvc-02 created
+
+# kubectl get pv
+NAME    CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS   CLAIM            STORAGECLASS   VOLUMEATTRIBUTESCLASS   REASON   AGE
+pv-02   1Gi        RWO            Retain           Bound    default/pvc-02   manual         <unset>                          9m57s
+
+# kubectl get pvc
+NAME     STATUS   VOLUME   CAPACITY   ACCESS MODES   STORAGECLASS   VOLUMEATTRIBUTESCLASS   AGE
+pvc-02   Bound    pv-02    1Gi        RWO            manual         <unset>                 32m
+
+
+- We did NOT explicitly specify pv-02 inside the PVC. That's the important part.
+- Kubernetes automatically performed the binding.
+- We only said, "I need 1Gi, RWO, with StorageClass manual."
+- Kubernetes looked at the available PVs and searched for one that satisfies the PVC's requirements. 
+
+- We had:
+    PV: pv-02
+     ├── Capacity: 1Gi
+     ├── Access Mode: RWO
+     └── StorageClass: manual
+
+
+- PVC requested:
+    PVC: pvc-02
+     ├── Storage: 1Gi
+     ├── Access Mode: RWO
+     └── StorageClass: manual
+
+
+- They match ✅ So Kubernetes automatically did:
+          PVC: pvc-02
+                 │
+                 │ Kubernetes finds matching PV
+                 ↓
+          PV: pv-02
+                 │
+                 ↓
+          STATUS = Bound
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Step 04 - Create a Pod that uses pvc-02
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pvc-demo-02
+spec:
+  containers:
+    - name: nginx
+      image: nginx:alpine
+      volumeMounts:
+        - name: app-storage
+          mountPath: /data
+
+  volumes:
+    - name: app-storage
+      persistentVolumeClaim:
+        claimName: pvc-02
+
+
+*** Output before the pod deletion ***
+
+# kubectl get pods
+NAME          READY   STATUS    RESTARTS   AGE
+pvc-demo-02   1/1     Running   0          4m
+
+# kubectl exec pvc-demo-02 -- ls /data/
+a.txt
+
+# kubectl exec pvc-demo-02 -- touch /data/p.txt
+
+# kubectl exec pvc-demo-02 -- ls /data/
+a.txt
+p.txt
+
+*** We delete the Pod to prove that the data survives because the storage is coming through: Pod → PVC → PV → /mnt/pv-02 ***
+
+# kubectl delete pod pvc-demo-02                                                                                                         
+pod "pvc-demo-02" deleted from default namespace
+
+# kubectl get pods                                                                                                                                    
+No resources found in default namespace.
+
+# kubectl apply -f pod.yaml
+pod/pvc-demo-02 created
+
+# kubectl exec pvc-demo-02 -- ls /data/
+a.txt
+p.txt
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+🎯 The key lesson
+
+- This is the difference from emptyDir.
+
+emptyDir:
+Pod → emptyDir
+Pod deleted → data gone ❌
+
+PV + PVC:
+Pod → PVC → PV → persistent storage
+Pod deleted → data remains ✅
+
+- One small detail: our PV uses hostPath underneath, so this persistence is tied to the Minikube Node.
+- Real EKS would replace /mnt/pv-02 with something like an AWS EBS volume.
+- PV/PVC hands-on is done. ✅
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------
