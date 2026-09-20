@@ -1,0 +1,59 @@
+Hands-on: ReadWriteOnce
+
+- We already have dynamic-pvc, which is RWO:
+
+# kubectl get pvc
+NAME          STATUS        VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   VOLUMEATTRIBUTESCLASS   AGE
+dynamic-pvc   Bound         pvc-9765cc85-b95f-4fc3-b942-252e95f7e1ec   1Gi        RWO            standard       <unset>                 19h
+
+
+1. Create a Pod using the PVC
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: rwo-pod-1
+spec:
+  containers:
+    - name: nginx
+      image: nginx:alpine
+      volumeMounts:
+        - name: app-storage
+          mountPath: /test
+  
+  volumes:
+    - name: app-storage
+      persistentVolumeClaim:
+        claimName: dynamic-pvc
+
+# kubectl apply -f rwo-pod-1.yaml
+pod/rwo-pod-1 created
+
+# kubectl get pod rwo-pod-1
+NAME        READY   STATUS    RESTARTS   AGE
+rwo-pod-1   1/1     Running   0          3m30s
+
+--------------------------------------------------------------------------------------------------------------------
+
+2. Verify it can write
+
+# kubectl exec rwo-pod-1 -- sh -c 'echo "RWO test" > /test/t.txt'
+
+# kubectl exec rwo-pod-1 -- cat /test/t.txt
+RWO test
+
+--------------------------------------------------------------------------------------------------------------------
+
+One important correction
+
+- Don't try to conclude from this lab that Kubernetes will always reject a second Pod using an RWO volume. Why?
+- Because RWO means one node, not one Pod.
+- If both Pods land on the same node, they may both be able to use the volume.
+
+- The important rule is:
+      RWO                                  RWX
+      = ReadWrite                          = ReadWrite
+      = One NODE                           = Multiple NODES
+
+--------------------------------------------------------------------------------------------------------------------
+
