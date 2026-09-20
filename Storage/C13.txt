@@ -1,0 +1,81 @@
+* Reclaim Policy
+
+- A Reclaim Policy defines what Kubernetes should do with the underlying storage when a PVC is deleted and the PV is released.
+- There are two important policies:
+
+1. Retain
+  - The storage/data is not automatically deleted.
+  - Useful when you want to protect important data.
+
+                    PVC deleted
+                         ↓
+                  PV becomes Released
+                         ↓
+                Underlying data remains
+
+
+2. Delete
+  - The storage is automatically cleaned up.
+  - This is commonly used with dynamically provisioned storage.
+
+                    PVC deleted
+                       ↓
+                    PV deleted
+                       ↓
+        Underlying dynamically provisioned storage is deleted
+
+---------------------------------------------------------------------------------------------------------------------------------------------------------
+
+* See our Minikube StorageClasses
+
+# kubectl get sc
+NAME                 PROVISIONER                RECLAIMPOLICY   VOLUMEBINDINGMODE   ALLOWVOLUMEEXPANSION   AGE
+standard (default)   k8s.io/minikube-hostpath   Delete          Immediate           false                  6d22h
+
+
+- So our dynamically provisioned PVC:
+            dynamic-pvc
+                 ↓
+          StorageClass: standard
+                 ↓
+          ReclaimPolicy: Delete
+
+- That's why the dynamically created PV had: 
+RECLAIM POLICY
+Delete
+
+In some of our prev hands-on:
+
+# kubectl get pv
+NAME                                       CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS     CLAIM                 STORAGECLASS   VOLUMEATTRIBUTESCLASS            AGE
+my-pv                                      1Gi        RWO            Retain           Released   default/my-pvc        manual         <unset>                          3d14h
+pv-02                                      1Gi        RWO            Retain           Bound      default/pvc-02        manual         <unset>                          24h
+pvc-9765cc85-b95f-4fc3-b942-252e95f7e1ec   1Gi        RWO            Delete           Bound      default/dynamic-pvc   standard       <unset>                          21h
+
+- In the above output, my-pv and pv-02 are the volumes created as part of static provisioning, whereas the volume which uses dynamic provisioning "pvc-9765cc85-b95f-4fc3-b942-252e95f7e1ec"
+has reclaim policy set to "Delete".
+
+- Our manually created PV had:
+    persistentVolumeReclaimPolicy: Retain
+
+- So:
+          Manual PV
+              ↓
+           Retain
+          
+          Dynamic PV
+              ↓
+           Delete
+
+---------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Important distinction
+
+- Reclaim Policy is associated with the PV.
+- StorageClass can define the default reclaim policy for dynamically provisioned PVs.
+- Reclaim Policy determines what happens to a PersistentVolume and its underlying storage after the PersistentVolumeClaim using it is deleted. 
+The main policies are Retain and Delete.
+- Retain → Keep the data
+  Delete  → Clean up the storage
+
+---------------------------------------------------------------------------------------------------------------------------------------------------------
