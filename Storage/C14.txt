@@ -1,0 +1,99 @@
+Topic : StatefulSet + volumeClaimTemplates
+-------------------------------------------
+
+(*) What problem does volumeClaimTemplates solve?
+
+ - Suppose we have a database with 3 Pods:
+        database-0
+        database-1
+        database-2
+
+- Each Pod needs its own persistent storage.
+
+- We don't want:
+        database-0 ──┐
+        database-1 ──┼── same PVC ❌
+        database-2 ──┘
+
+- Instead, we want: Each Pod gets its own PVC. That's exactly what volumeClaimTemplates provides.
+        database-0 → PVC → PV → Storage
+        database-1 → PVC → PV → Storage
+        database-2 → PVC → PV → Storage
+
+---------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) What is volumeClaimTemplates?
+
+- volumeClaimTemplates is a field in a StatefulSet that tells Kubernetes: "For every Pod created by this StatefulSet, automatically create a PVC for that Pod."
+
+- Example:
+    volumeClaimTemplates:
+      - metadata:
+          name: data
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 1Gi
+
+- If the StatefulSet has: replicas: 3... Kubernetes creates:
+              Pod: database-0
+                 ↓
+              PVC: data-database-0
+              
+              Pod: database-1
+                 ↓
+              PVC: data-database-1
+              
+              Pod: database-2
+                 ↓
+              PVC: data-database-2
+And each PVC gets its own PV.
+
+---------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Complete flow
+
+                                      StatefulSet
+                                          │
+                                          │ replicas: 3
+                                          ↓
+                      ┌────────────┬────────────┬────────────┐
+                      │ database-0 │ database-1 │ database-2 │
+                      └─────┬──────┴─────┬──────┴─────┬──────┘
+                            ↓             ↓            ↓
+                         PVC-0          PVC-1        PVC-2
+                            ↓             ↓            ↓
+                           PV-0          PV-1         PV-2
+                            ↓             ↓            ↓
+                       Storage-0       Storage-1    Storage-2
+
+Why StatefulSet?
+  - Stable Pod identity
+  - Stable network identity
+  - Stable persistent storage
+
+Now volumeClaimTemplates gives us the third:
+    StatefulSet
+    ├── Stable Pod identity
+    ├── Stable network identity
+    └── Stable storage identity
+
+---------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+The important behavior
+
+- If:
+        database-0
+         ↓
+      data-database-0
+and database-0 gets deleted: database-0 ❌
+
+- Kubernetes can recreate: 
+          database-0 ✅
+             ↓
+          data-database-0
+
+- The PVC remains, so the Pod can get its same persistent data back. That's one of the major reasons StatefulSets are used for databases and other stateful 
+applications.
