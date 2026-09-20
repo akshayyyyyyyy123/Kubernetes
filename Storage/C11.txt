@@ -1,0 +1,55 @@
+Access Modes
+
+- Access Modes define how a PersistentVolume can be mounted/accessed by pods.
+- There are 3 main access modes:
+
+----------------------------------------------------------------
+| Access Mode           | Meaning                              |
+| --------------------- | ------------------------------------ |
+|  ReadWriteOnce (RWO)  | Read + write from one node           |
+|  ReadOnlyMany (ROX)   | Read-only from multiple nodes        |
+|  ReadWriteMany (RWX)  | Read + write from multiple nodes     |
+----------------------------------------------------------------
+
+- Once / Many refers to Nodes, not necessarily Pods.
+- For example: RWO 
+
+  Node 1
+   ├── Pod A ──┐
+   └── Pod B ──┤
+               ↓
+            Volume
+
+Multiple Pods on the same node can potentially use the volume.
+
+- But:
+
+  Node 1                    Node 2
+  Pod A                     Pod B
+    ↓                         ↓
+    └────── Volume ──────────┘
+
+For an RWO volume, mounting it read-write from both nodes isn't supported.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Real-world AWS example
+
+- This becomes particularly important with EKS:
+
+                AWS EBS
+                   ↓
+               Usually RWO
+                
+                AWS EFS
+                   ↓
+                Supports RWX
+
+- So:   
+    EBS → typically one-node read/write access
+    EFS → multiple-node read/write access
+
+- Access Modes specify how a PersistentVolume can be mounted by nodes, such as read-write by a single node, read-only by multiple nodes, or read-write by 
+multiple nodes.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------
