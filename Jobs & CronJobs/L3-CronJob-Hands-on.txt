@@ -1,0 +1,83 @@
+CronJob hands-on
+
+STEP 01: Create the YAML
+# touch cronjob-demo.yaml
+
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: heyy-cronjob
+
+spec:
+  schedule: "* * * * *"
+
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: hello
+              image: busybox:1.36
+              command:
+                - sh
+                - -c
+                - echo "Hello from CronJob - $(date)"
+
+          restartPolicy: Never
+
+-----------------------------------------------------------------------------------------------
+
+STEP 02: Apply
+
+# kubectl apply -f cronjob-demo.yaml
+
+# kubectl get cronjobs
+NAME            SCHEDULE      TIMEZONE   SUSPEND   ACTIVE   LAST SCHEDULE   AGE
+heyy-cronjob    * * * * *     <none>     False     1        3s              82s
+
+# kubectl get jobs
+NAME                     STATUS     COMPLETIONS   DURATION   AGE
+heyy-cronjob-29848870    Complete   1/1           2s         2m17s
+heyy-cronjob-29848871    Complete   1/1           3s         77s
+heyy-cronjob-29848872    Complete   1/1           3s         17s
+
+
+That's the key thing we're proving:
+
+CronJob
+   │
+   ├── creates Job #1
+   │       └── Pod
+   │
+   ├── creates Job #2
+   │       └── Pod
+   │
+   └── creates Job #3
+           └── Pod
+
+-----------------------------------------------------------------------------------------------
+
+STEP 03: Validation
+# kubectl logs heyy-cronjob-29848873-b2cww                                                                                                            
+Hello from CronJob - Fri Oct  2 09:13:00 UTC 2026
+
+Job = execute a task
+CronJob = repeatedly create Jobs on a schedule
+
+-----------------------------------------------------------------------------------------------
+
+What you just demonstrated
+
+          CronJob
+             ↓
+          schedule: "* * * * *"
+             ↓
+          Every minute
+             ↓
+          New Job
+             ↓
+          New Pod
+             ↓
+          Command executes
+             ↓
+          Pod completes
