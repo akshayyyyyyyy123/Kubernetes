@@ -1,0 +1,161 @@
+Kubernetes Job
+  - A Job is a Kubernetes resource used to run a task until it successfully completes.
+  - Unlike a Deployment, a Job is not meant to keep a Pod running forever.
+  - A Kubernetes Job creates one or more Pods and ensures that a specified task runs to successful completion.
+  - Simple example :- 
+      Suppose you need to:
+          * Run a database migration
+          * Process a batch of files
+          * Generate a report
+          * Run a one-time script
+          * Perform some cleanup
+  - You don't need a continuously running Pod. You can use a Job.
+
+REMEMBER
+  Deployment → continuously running workload
+  Job → finite task that must complete
+
+-------------------------------------------------------------------------------------------------------------------
+
+Deployment vs Job
+
+                    Deployment
+                        ↓
+                       Pod
+                        ↓
+               Keep running continuously
+                        ↓
+              If Pod dies → create another Pod
+
+
+                        Job
+                         ↓
+                        Pod
+                         ↓
+                      Run task
+                         ↓
+               Task completes successfully
+                         ↓
+                    Job completes ✅
+
+-------------------------------------------------------------------------------------------------------------------
+
+Skeleton
+
+apiVersion: batch/v1
+kind: Job
+
+metadata:
+  name: hello-job
+
+spec:                    # Job specification
+  template:              # Template for the Pod
+    spec:                # Pod specification
+
+      containers:        # Containers inside the Pod
+        - name:
+          image:
+          command:
+
+      restartPolicy:
+
+-------------------------------------------------------------------------------------------------------------------
+
+Skeleton Explaination
+
+Job
+└── Pod Template
+    └── Pod
+        ├── Container
+        └── Container configuration
+
+
+1. The outer Job
+
+- This says: "I am creating a Kubernetes Job called hello-job."
+- The Job's spec contains the desired behavior of the Job.
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: hello-job
+
+spec:
+
+--------------------------------------------------------------------------
+
+2. template
+
+spec:
+  template:
+
+- This means: "Here is the template Kubernetes should use when creating the Pod for this Job."
+- A Job doesn't directly contain a container. It creates a Pod, so Kubernetes needs to know: "What should that Pod look like?"
+- That's what template provides.
+
+--------------------------------------------------------------------------
+
+3. Why another spec?
+- This is the part that usually looks weird. There are two different specs.
+
+  spec:
+    template:
+      spec:
+
+- Think of it as: 
+    Job
+    │
+    └── Job spec
+        │
+        └── Pod template
+            │
+            └── Pod spec
+
+- Therefore:
+  spec:                  # Job's spec
+    template:            # Pod template
+      spec:              # Pod's spec
+        containers:
+
+- The inner spec belongs to the Pod, not the Job.
+
+--------------------------------------------------------------------------
+
+4. containers
+
+containers:
+  - name: hello
+    image: busybox:1.36
+    command:
+      - sh
+      - -c
+      - echo "Hello from Kubernetes Job"
+
+- Now we're inside the Pod specification.
+- We're saying: "When the Job creates its Pod, the Pod should have this container."
+
+      Job
+       │
+       └── creates
+             ↓
+           Pod
+            │
+            └── Container
+                 ├── image: busybox:1.36
+                 └── command: echo "Hello..."
+
+--------------------------------------------------------------------------
+
+5. restartPolicy
+restartPolicy: Never
+
+- This also belongs to the Pod spec. 
+- It tells Kubernetes what the Pod should do if its container exits.
+
+----------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Job retry behavior  
+  - If the task fails, a Job can retry the Pod. 
+  - You can control this with: 
+      backoffLimit: 3
+  - Meaning Kubernetes can retry failed attempts according to the Job's failure policy, up to the configured limit.
