@@ -1,0 +1,54 @@
+CronJob
+
+- A CronJob is used when you want a Kubernetes Job to run on a schedule.
+- A CronJob is a Kubernetes resource that creates Jobs according to a specified schedule.
+- You can think of it as:
+
+                        CronJob
+                           ↓
+                    Schedule says "when?"
+                           ↓
+                       Creates Job
+                           ↓
+                      Job creates Pod
+                           ↓
+                      Task executes
+                           ↓
+                        Completed
+
+The hierarchy to remember:
+  CronJob → Job → Pod → Container
+
+------------------------------------------------------------------------------------------------------
+
+Job vs CronJob
+
+- Job     : Run this task once
+- CronJob : Run this task repeatedly according to a schedule
+
+Example
+- Run a task every 3 minutes:
+
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: hello-cronjob
+spec:
+  schedule: "*/3 * * * *"
+
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: hello
+              image: busybox:1.36
+              command:
+                - sh
+                - -c
+                - echo "Hello from CronJob"
+
+          restartPolicy: Never
+
+------------------------------------------------------------------------------------------------------
+
