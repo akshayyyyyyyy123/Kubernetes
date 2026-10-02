@@ -1,0 +1,136 @@
+Hands-on: StatefulSet + volumeClaimTemplates
+
+We'll create a small 2-replica Nginx StatefulSet. Each Pod will automatically get its own PVC.
+
+1. Create the YAML
+Create:  touch statefulset-storage.yaml
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: storage-demo
+spec:
+  serviceName: storage-demo
+  replicas: 2
+
+  selector:
+    matchLabels:
+      app: storage-demo
+
+  template:
+    metadata:
+      labels:
+        app: storage-demo
+
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:alpine
+
+          volumeMounts:
+            - name: data
+              mountPath: /data
+
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+
+        resources:
+          requests:
+            storage: 1Gi
+
+        storageClassName: standard
+
+
+Notice this part:
+
+volumeClaimTemplates:
+  - metadata:
+      name: data
+
+- We are not manually creating a PVC.
+- Kubernetes will create them for us.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+2. Apply it
+# kubectl apply -f statefulset-storage.yaml
+
+Check Pods:
+# kubectl get pods                                                                                                                                    
+NAME             READY   STATUS    RESTARTS      AGE
+storage-demo-0   1/1     Running   0             2m54s
+storage-demo-1   1/1     Running   0             2m53s
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+3. Check PVCs
+# kubectl get pvc
+NAME                  STATUS        VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   VOLUMEATTRIBUTESCLASS   AGE
+data-storage-demo-0   Bound         pvc-a3f4b9b7-5aa7-40ff-afca-150b22100614   1Gi        RWO            standard       <unset>                 7m16s
+data-storage-demo-1   Bound         pvc-3c2123a2-c3de-4551-bd2f-44aea2a13198   1Gi        RWO            standard       <unset>                 7m15s
+
+Notice:
+                storage-demo-0
+                      ↓
+                data-storage-demo-0
+                
+                storage-demo-1
+                      ↓
+                data-storage-demo-1
+
+Two Pods → two PVCs.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+4. Check PVs
+
+- You'll see two dynamically created PVs corresponding to those PVCs.
+
+# kubectl get pv
+NAME                                       CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS     CLAIM                         STORAGECLASS   VOLUMEATTRIBUTESCLASS        AGE
+pvc-3c2123a2-c3de-4551-bd2f-44aea2a13198   1Gi        RWO            Delete           Bound      default/data-storage-demo-1   standard       <unset>                      14m
+pvc-a3f4b9b7-5aa7-40ff-afca-150b22100614   1Gi        RWO            Delete           Bound      default/data-storage-demo-0   standard       <unset>                      14m
+
+
+StatefulSet
+     │
+     ├── storage-demo-0
+     │       ↓
+     │   data-storage-demo-0
+     │       ↓
+     │      PV-0
+     │
+     └── storage-demo-1
+             ↓
+         data-storage-demo-1
+             ↓
+            PV-1
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+5. Prove the storage is separate
+
+Write different data:
+
+# kubectl exec storage-demo-0 -- sh -c 'echo "I belong to Pod 0" > /data/identity.txt'
+# kubectl exec storage-demo-1 -- sh -c 'echo "I belong to Pod 1" > /data/identity.txt'
+
+Check:
+# kubectl exec storage-demo-0 -- cat /data/identity.txt
+I belong to Pod 0
+
+# kubectl exec storage-demo-1 -- cat /data/identity.txt
+I belong to Pod 1
+
+- This proves each StatefulSet Pod has its own storage.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+NEXT TOPICS
+
+-> CSI (Container Storage Interface)
+-> AWS EBS vs EFS in EKS
