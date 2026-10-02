@@ -1,0 +1,54 @@
+Hands-on JOB
+
+Job: Run a database-backup-like task once
+
+STEP 01: Create job.yaml
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: backup-job-demo
+spec:
+  template:
+    spec:
+      containers:
+        - name: backup
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              echo "Starting backup..."
+              sleep 30
+              echo "Backup completed successfully"
+
+      restartPolicy: Never
+
+------------------------------------------------------------------------------------------------------------------------------
+
+STEP 02: Apply an validate
+
+# kubectl apply -f job.yaml
+job.batch/backup-job-demo created
+
+# kubectl get jobs
+NAME                    STATUS     COMPLETIONS   DURATION   AGE
+backup-job-demo         Running    0/1           4s         4s
+
+# kubectl get pods
+NAME                          READY   STATUS      RESTARTS   AGE
+backup-job-demo-h7l77         1/1     Running     0          11s
+
+# kubectl logs backup-job-demo-h7l77
+Starting backup...
+
+# kubectl logs backup-job-demo-h7l77
+Starting backup...
+Backup completed successfully
+
+# kubectl get pods -l job-name=backup-job-demo                                                                                                       
+NAME                    READY   STATUS      RESTARTS   AGE
+backup-job-demo-h7l77   0/1     Completed   0          3m36s
+
+------------------------------------------------------------------------------------------------------------------------------
+
