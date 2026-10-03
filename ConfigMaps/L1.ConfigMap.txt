@@ -1,0 +1,155 @@
+(*) ConfigMap
+
+- A ConfigMap is a Kubernetes object used to store non-sensitive configuration data separately from your application/container image and make that 
+=configuration available to Pods.
+- For example, instead of hardcoding:
+      APP_ENV=production
+      APP_PORT=8080
+      LOG_LEVEL=info
+inside your application image, you can store them in a ConfigMap.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Why do we want ConfigMaps?
+
+- The main reason is separation of configuration from application code/image.
+- Imagine your application needs:
+    APP_ENV=production
+    APP_PORT=8080
+    LOG_LEVEL=info
+
+❌ Without ConfigMap
+- You might put these values directly into your application/image:
+
+    Docker Image
+    ├── Application
+    └── config
+        ├── APP_ENV=production
+        └── APP_PORT=8080
+
+- Now suppose you want to deploy the same application to:
+    * Development
+    * Testing
+    * Production
+
+- The values may differ:
+    * Development → APP_ENV=dev
+    * Testing     → APP_ENV=test
+    * Production  → APP_ENV=prod
+
+- If configuration is baked into the image, you may need different images or rebuild the image.
+
+
+✅ With ConfigMap
+- You keep the same application image:
+
+             Same Docker Image
+                    │
+          ┌─────────┼─────────┐
+          ↓         ↓         ↓
+        Dev       Test       Prod
+          │         │         │
+       ConfigMap ConfigMap ConfigMap
+
+- Each environment can provide different configuration.
+    Dev ConfigMap
+    APP_ENV=dev
+    
+    Prod ConfigMap
+    APP_ENV=production
+
+- The application image doesn't change.
+- That's the key idea: "Same application, different configuration."
+
+------------------------------------------------------------------------------------------------------------------------------------------------------  
+
+(*) What exactly does ConfigMap store?
+  
+- It stores key-value configuration data.
+- Example:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: app-config
+      
+      data:
+        APP_ENV: "production"
+        APP_PORT: "8080"
+        LOG_LEVEL: "info"
+
+------------------------------------------------------------------------------------------------------------------------------------------------------
+  
+(*) How does the Pod use it?
+
+- A ConfigMap by itself doesn't automatically affect a Pod.
+- You create:
+
+                      ConfigMap
+                          ↓
+                Pod references ConfigMap
+                          ↓
+               Container receives configuration
+
+- One common method is through environment variables.
+- Example:
+        env:
+          - name: APP_ENV
+            valueFrom:
+              configMapKeyRef:
+                name: app-config
+                key: APP_ENV
+
+- Now inside the container:
+      echo $APP_ENV
+  O/P: production
+
+------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Real DevOps example
+
+- Suppose you have a backend application: my-backend:v1.5
+  
+- The application needs:
+    DATABASE_HOST
+    REDIS_HOST
+    LOG_LEVEL
+
+- You don't want to create:
+    my-backend-dev:v1.5
+    my-backend-test:v1.5
+    my-backend-prod:v1.5
+
+- Instead:
+
+                 my-backend:v1.5
+                       │
+          ┌────────────┼────────────┐
+          ↓            ↓            ↓
+       Dev CM       Test CM       Prod CM
+          │            │            │
+       config        config        config
+
+- Same image, different configuration.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) ConfigMap vs Secret
+  
+| ConfigMap                   | Secret                |
+| --------------------------- | --------------------- |
+| Non-sensitive configuration | Sensitive information |
+| App environment             | Password              |
+| Log level                   | API token             |
+| Feature flags               | Database credentials  |
+| Service hostname            | Private key           |
+
+Example:
+  ConfigMap
+  DB_HOST=mysql
+  LOG_LEVEL=info
+
+Secret
+DB_PASSWORD=xxxxx
+API_TOKEN=xxxxx
+
+- Don't put passwords into ConfigMaps.
