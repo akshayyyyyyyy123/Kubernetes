@@ -1,0 +1,16 @@
+ConfigMap — Final Summary
+
+- A ConfigMap stores non-sensitive configuration separately from container images, allowing the same image across environments.
+- Pods consume ConfigMaps using configMapKeyRef for individual keys, envFrom for all keys as environment variables, or volumes for configuration files.
+- Use Secrets, not ConfigMaps, for sensitive data.
+
+
+Types / ways to consume:
+
+1. configMapKeyRef → specific key as environment variable
+2. envFrom → all keys as environment variables
+3. Volume mount → keys become files inside the container.
+
+- Use ConfigMap for non-sensitive data and Secret for passwords, tokens, and credentials.
+- One important practical point: ConfigMap changes can propagate to mounted files, but an environment variable injected into an already-running container
+does not change automatically; applications commonly need a restart/rollout to pick up updated env-based configuration.
