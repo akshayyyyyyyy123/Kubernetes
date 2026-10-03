@@ -1,0 +1,183 @@
+Three ways a Pod can consume a ConfigMap
+
+1. Individual environment variable
+2. envFrom — import everything
+3. Mount ConfigMap as a file
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+1. Individual environment variable
+- You can take one specific key from the ConfigMap and inject it into the container.
+- Think of a ConfigMap as a storage box for configuration, and the Pod says: “Kubernetes, take this particular value from that box and put it
+inside my container as an environment variable.”
+
+                                                        ConfigMap
+                                                             |
+                                                             |  APP_ENV = production
+                                                             ↓
+                                                       Pod specification
+                                                             |
+                                                             |  "Give me APP_ENV from app-config"
+                                                             ↓
+                                                         Kubernetes
+                                                             |
+                                                             |  injects value
+                                                             ↓
+                                                         Container
+                                                             |
+                                                             |  APP_ENV=production
+                                                             ↓
+                                                        Application
+
+
+STEP 01 — ConfigMap stores the value
+
+kind: ConfigMap
+metadata:
+  name: app-config
+data:
+  APP_ENV: "production"
+
+- So Kubernetes now has a ConfigMap called app-config containing:
+    APP_ENV → production
+    APP_PORT → 8080
+    LOG_LEVEL → info
+
+- Think: app-config
+┌─────────────────────-----
+│ APP_ENV    → production │
+│ APP_PORT   → 8080       │
+│ LOG_LEVEL  → info       │
+└─────────────────────-----
+
+
+STEP 02 — Pod says which value it wants
+- Inside your Pod: "Create an environment variable called APP_ENV and get its value from the APP_ENV key inside the ConfigMap named app-config."
+
+    env:
+      - name: APP_ENV
+        valueFrom:
+          configMapKeyRef:
+            name: app-config
+            key: APP_ENV
+
+- So Kubernetes looks for: 
+      ConfigMap name = app-config
+      Key            = APP_ENV
+
+- It finds: APP_ENV = production
+
+
+STEP 03 — Kubernetes injects it into the container
+- Before the container starts, Kubernetes effectively sets: APP_ENV=production , inside the container's environment.
+- Your container therefore sees: APP_ENV=production
+- And because your command is: command: ["sh", "-c", "env; sleep 3600"] where env prints all environment variables.
+
+**** configMapKeyRef tells Kubernetes to take the APP_ENV key from the app-config ConfigMap and inject its value into the container as the APP_ENV 
+environment variable ****
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Complete config files:
+
+Our ConfigMap:
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+data:
+  APP_ENV: "production"
+  APP_PORT: "8080"
+  LOG_LEVEL: "info"
+
+
+Pod:
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: config-demo
+spec:
+  containers:
+    - name: app
+      image: busybox:1.36
+      command: ["sh", "-c", "env; sleep 3600"]
+
+      env:
+        - name: APP_ENV
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: APP_ENV
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+
+KEY DEFINITIONS
+
+(i) configMapKeyRef - configMapKeyRef is used to tell Kubernetes: “Get a specific key's value from a ConfigMap and use it in my Pod.”
+It allows a Pod to consume a specific key from a ConfigMap as an environment variable.
+
+
+
+(ii) envFrom — import everything
+- Instead of selecting individual keys, you can import all ConfigMap keys as environment variables.
+
+envFrom:
+  - configMapRef:
+      name: app-config
+
+Now:
+APP_ENV=production
+APP_PORT=8080
+LOG_LEVEL=info
+
+Difference
+configMapKeyRef - give me one key
+envFrom - give me all keys
+
+
+
+(iii) Mount ConfigMap as a file
+- This one is very important in real Kubernetes applications.
+- Instead of environment variables, Kubernetes can make ConfigMap data available as files inside the container.
+
+- For example:
+
+    volumeMounts:
+      - name: config-volume
+        mountPath: /etc/app
+    
+    volumes:
+      - name: config-volume
+        configMap:
+          name: app-config
+
+- Then inside the container:
+    /etc/app/
+    ├── APP_ENV
+    ├── APP_PORT
+    └── LOG_LEVEL
+
+- And cat /etc/app/APP_ENV, gives "production"
+
+- So:
+              ConfigMap
+                 │
+                 ↓
+              Volume
+                 │
+                 ↓
+            /etc/app/APP_ENV
+            /etc/app/APP_PORT
+            /etc/app/LOG_LEVEL
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+
+🎯 The 3 methods to remember
+
+| Method            | What happens                                 |
+| ----------------- | -------------------------------------------- |
+| `configMapKeyRef` | One ConfigMap key → one environment variable |
+| `envFrom`         | All ConfigMap keys → environment variables   |
+| Volume mount      | ConfigMap keys → files inside container      |
