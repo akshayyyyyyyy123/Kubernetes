@@ -153,3 +153,11 @@ DB_PASSWORD=xxxxx
 API_TOKEN=xxxxx
 
 - Don't put passwords into ConfigMaps.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Why do we use ConfigMaps?
+
+- We use ConfigMaps to separate non-sensitive application configuration from the container image. This allows us to use the same application image across different environments while providing environment-specific configuration through Kubernetes.
+
+- ConfigMap = configuration outside the container image.
