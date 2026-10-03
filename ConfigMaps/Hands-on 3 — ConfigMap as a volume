@@ -1,0 +1,112 @@
+Hands-on 3 — ConfigMap as a volume
+Now we'll make the ConfigMap appear as files inside the container.
+
+------------------------------------------------------------------------------------------------------------------------
+
+STEP 01 - Create the configmap
+
+configmap.yaml
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-test-config-map
+data:
+  TEAM: "DevOps"
+  PROJECT: "Kubernetes ConfigMap Example"
+  COUNTRY: "INDIA"
+
+# kubectl apply -f configmap.yaml
+configmap/app-test-config-map created
+
+# kubectl get configmap
+NAME                  DATA   AGE
+app-test-config-map   3      5s
+
+----------------------------------------------------------------------
+
+STEP 02 — Create the Pod
+
+configmap-volume.yaml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: configmap-volume-pod
+spec:
+  containers:
+    - name: app-volume
+      image: busybox:1.36
+      
+      command:
+        - sh
+        - -c
+        - |
+          echo "TEAM: $(cat /tmp/config/TEAM)"
+          echo "PROJECT: $(cat /tmp/config/PROJECT)"
+          echo "COUNTRY: $(cat /tmp/config/COUNTRY)"
+          sleep 3600
+      
+      volumeMounts:
+        - name: config-volume
+          mountPath: /tmp/config
+  
+  volumes:
+    - name: config-volume
+      configMap:
+        name: app-test-config-map
+
+# kubectl apply -f configmap-volume.yaml
+pod/configmap-volume-pod created
+
+# kubectl get pods
+NAME                    READY   STATUS    RESTARTS        AGE
+configmap-volume-pod    1/1     Running   0               3s
+----------------------------------------------------------------------
+
+STEP 03 - Verify
+
+# kubectl logs configmap-volume-pod
+TEAM: DevOps
+PROJECT: Kubernetes ConfigMap Example
+COUNTRY: INDIA
+
+# kubectl exec -it configmap-volume-pod -- sh
+/ #
+/ # cat /tmp/config/TEAM
+DevOps/ #
+/ #
+/ # ls /tmp/config/
+COUNTRY  PROJECT  TEAM
+/ #
+/ # cat /tmp/config/TEAM
+DevOps/ #
+/ # cat /tmp/config/COUNTRY
+INDIA/ #
+/ # cat /tmp/config/PROJECT
+Kubernetes ConfigMap Example/ #
+/ #
+/ # exit
+
+--------------------------------------------------------------------------------------------------------------------------------------------
+
+FINAL PICTURE
+
+                 ConfigMap
+                app-config
+                    │
+        ┌───────────┼───────────┐
+        │           │           │
+    APP_ENV     APP_PORT    LOG_LEVEL
+        │           │           │
+        └───────────┼───────────┘
+                    ↓
+             ConfigMap Volume
+                    ↓
+               /etc/app/
+                    │
+          ┌─────────┼─────────┐
+          ↓         ↓         ↓
+      APP_ENV   APP_PORT  LOG_LEVEL
+
+--------------------------------------------------------------------------------------------------------------------------------------------
