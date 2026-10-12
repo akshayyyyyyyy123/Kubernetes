@@ -1,0 +1,76 @@
+Why do we need a ServiceAccount?
+
+- A ServiceAccount provides an identity to an application running inside a Kubernetes Pod.
+- Kubernetes needs to know which application is making a request so it can determine what that application is allowed to do.
+- For example, suppose you have a Python application running inside a Pod. The application needs to read Kubernetes resources or access AWS services.
+- Without a suitable identity, Kubernetes cannot associate the application with a specific ServiceAccount for authentication and authorisation.
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+How does it work?
+
+
+                                                          Python App
+                                                     Running inside a Pod  
+                                                              |
+                                                              ↓
+                                                        ServiceAccount
+                                                    Provides the application's 
+                                                      Kubernetes identity  
+                                                              |
+                                                              ↓ 
+                                        RBAC                         IRSA / Pod Identity
+                                Authorises Kubernetes              Connects the identity to AWS IAM
+                                    API actions
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+What happens without a ServiceAccount?
+
+- Every Pod runs with a ServiceAccount identity. If you don't specify one, Kubernetes normally assigns the namespace's default ServiceAccount.
+- However, the default ServiceAccount does not automatically grant your application the permissions it needs.
+- For example:
+      * Your application needs to list Pods → configure appropriate RBAC permissions.
+      * Your application needs to read an S3 bucket → configure IRSA or EKS Pod Identity and the appropriate IAM permissions.
+      * Creating a dedicated ServiceAccount lets you give each application its own identity and permissions instead of sharing a general identity.
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Hands-on example
+
+* Create a ServiceAccount:
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: app-service-account
+  namespace: default
+
+# kubectl apply -f service-account.yaml
+
+
+* Use it in a Pod:
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-app
+spec:
+  serviceAccountName: app-service-account
+  containers:
+    - name: app
+      image: nginx
+
+# kubectl apply -f pod.yaml
+
+- Important: Creating a ServiceAccount alone does not grant extra Kubernetes permissions or AWS access.
+*** A Kubernetes ServiceAccount provides an identity to an application running in a Pod. That identity can be used with RBAC to control Kubernetes API access
+and with IRSA or EKS Pod Identity to enable access to AWS services through IAM permissions ***
+
+Remember the relationship:
+- ServiceAccount = identity
+- RBAC = Kubernetes authorisation
+- IAM policy = AWS authorisation
+- IRSA / Pod Identity = mechanism to obtain AWS credentials for that workload identity
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------
