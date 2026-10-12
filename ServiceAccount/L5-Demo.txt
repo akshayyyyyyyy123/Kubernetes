@@ -1,0 +1,131 @@
+
+STEP 01: Creation of ServiceAccount
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: monitoring-sa
+
+# kubectl apply -f sa.yaml
+
+# kubectl get sa monitoring-sa
+NAME            SECRETS   AGE
+monitoring-sa   0         23m
+
+- SECRETS = 0 is normal in modern Kubernetes. ServiceAccount tokens are typically provided through projected volumes when needed.
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+STEP 02: Create a Role
+
+- Now we'll grant monitoring-sa permission to read Pods, but not delete them.
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pod-reader
+  namespace: default
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+
+
+# kubectl apply -f pod-reader-role.yaml                                                                                                              
+role.rbac.authorization.k8s.io/pod-reader created
+
+
+# kubectl get role pod-reader
+NAME         CREATED AT
+pod-reader   2026-10-12T11:13:58Z
+
+
+What each field means:
+  * kind: Role — defines permissions within one namespace.
+  * apiGroups: [""] — refers to the core API group, which includes Pods.
+  * resources: ["pods"] — permissions apply to Pods.
+  * verbs — permits reading individual Pods, listing them and watching for changes.
+  * No delete, create or update permission is granted.
+
+- The pod-reader role has been created successfully.
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+STEP 03: Create a RoleBinding
+
+- Role : pod-reader
+- Currently, the Role defines permissions, but it hasn't been connected to monitoring-sa yet. That's what a RoleBinding does.
+- We'll bind this Role to monitoring-sa using a RoleBinding.
+
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pod-reader-binding
+  namespace: default
+subjects:
+  - kind: ServiceAccount
+    name: monitoring-sa
+    namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: pod-reader
+
+
+Understand the important fields:
+  * subjects: Who receives the permissions? monitoring-sa
+  * roleRef: Which permissions are granted? The pod-reader Role
+  * namespace: default: The RoleBinding grants these permissions within the default namespace
+
+
+# kubectl apply -f pod-reader-binding.yaml
+rolebinding.rbac.authorization.k8s.io/pod-reader-binding created
+
+# kubectl get rolebinding pod-reader-binding
+NAME                 ROLE              AGE
+pod-reader-binding   Role/pod-reader   36s
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+STEP 04: Test the permissions
+
+- Run this command to check whether monitoring-sa can list Pods
+  # kubectl auth can-i list pods --as=system:serviceaccount:default:monitoring-sa
+    Output: yes
+
+# kubectl auth can-i delete pods --as=system:serviceaccount:default:monitoring-sa
+no
+
+Why? Our Role grants get, list, and watch permissions only. It does not grant delete.
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+STEP 05: Understand what you just proved
+
+List Pods → yes
+The Role grants the list verb on Pods.
+
+Delete Pods → no
+The Role doesn't grant the delete verb on Pods.
+
+- Your RBAC configuration works like this:
+
+                            monitoring-sa (ServiceAccount)
+                                      |
+                                      v
+                            RoleBinding (pod-reader-binding)
+                                      |
+                                      v
+                            Role (pod-reader)
+                                      |
+                                      v
+                            Pods: get, list, watch
+                                  NOT delete
+
+ServiceAccount: identifies a workload to the Kubernetes API.
+Role: defines permitted actions on resources within a namespace.
+RoleBinding: grants the Role's permissions to a ServiceAccount or another subject.
+RBAC: determines which Kubernetes API operations an identity is authorized to perform.
+
+------------------------------------------------------------------------------------------------------------------------------------------------
