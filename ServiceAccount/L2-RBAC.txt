@@ -1,0 +1,64 @@
+Kubernetes RBAC - Roles, ClusterRoles, RoleBindings and ClusterRoleBindings
+
+
+What is RBAC?
+- RBAC (Role-Based Access Control) is a Kubernetes authorization mechanism that controls what actions a user, group or ServiceAccount can perform on 
+Kubernetes resources.
+- For example, should an application be allowed to read Pods? Create Deployments? Delete Secrets?
+- RBAC controls those permissions.
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Is RBAC, PodIdentity/IRSA same?
+- RBAC -> Kubernetes permissions
+- Controls what a user or ServiceAccount can do inside Kubernetes.
+- Examples include:
+    * Can this ServiceAccount list Pods?
+    * Can it delete Deployments?
+    * Can it read Secrets in a namespace?
+
+- EKS Pod Identity —> AWS permissions
+- Allows a Kubernetes application to obtain AWS credentials to access AWS services.
+- Examples include:
+    * Can this Pod read an S3 bucket?
+    * Can it retrieve a secret from AWS Secrets Manager?
+    * Can it publish messages to SQS?
+
+
+Understand with an example
+- Imagine you deploy a Python application in an EKS cluster that needs to read files from S3.
+
+                    Python application running in a Pod 
+                                    |
+                                    ↓
+                          Kubernetes ServiceAccount
+                RBAC                              Pod Identity
+        Authorises Kubernetes                 Provides AWS credentials         
+              API actions
+                                    |
+                                    ↓
+                                  AWS S3
+                    IAM policy determines which S3 actions
+                                are allowed
+
+- Here's the important distinction:
+    * RBAC doesn't grant permission to read S3 objects.
+    * Pod Identity doesn't grant permission to delete Kubernetes Pods.
+    * AWS IAM policies determine what the application's AWS credentials can access.
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------
+
+The four RBAC objects
+
+- Role                : Defines permissions within one namespace
+- ClusterRole         : Defines permissions that can be used cluster-wide, including for cluster-scoped resources
+- RoleBinding         : Grants a Role or ClusterRole's permissions within a namespace
+- ClusterRoleBinding  : Grants a ClusterRole's permissions across the cluster
+
+Remember this distinction:
+  * Role / ClusterRole → define what is allowed
+  * RoleBinding / ClusterRoleBinding → assign those permissions to an identity
+
+- RBAC permissions are additive: these objects grant permissions rather than explicitly denying actions
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------
