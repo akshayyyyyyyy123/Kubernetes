@@ -1,0 +1,163 @@
+What exactly does RBAC do?
+
+- RBAC controls which identities are allowed to perform which actions on Kubernetes resources.
+- For example, it determines whether an identity can:
+    * Read Pods
+    * Create or delete Deployments
+    * View ConfigMaps
+    * Read Secrets
+    * Modify Services
+- Think of a monitoring application running inside a Pod. It needs to list Pods to discover what's running in the cluster. RBAC lets you grant that specific 
+permission without giving it permission to delete those Pods.
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+What happens when RBAC isn't used?
+
+- The important distinction is that Kubernetes doesn't simply allow every request when you omit RBAC configuration.
+- Kubernetes API requests go through authentication and authorization. If RBAC is the configured authorization mechanism, requests must be allowed by the 
+applicable RBAC permissions. Otherwise, they are denied.
+
+- Consider our application:
+
+                                                        Monitoring Pod
+                                                 Wants to list Kubernetes Pods
+                                                              |
+                                                              |
+                                                              ↓
+                                                 Request reaches Kubernetes API
+                                                              |
+                                                              |
+                                            -----------------------------------
+                                            ↓                                  ↓
+                                      With permission                    Without permission
+                                      Request allowed.                    Request denied, typically 
+                                      Pod list returned.                  with Forbidden.
+
+
+- So without the required RBAC permissions, the application cannot perform that Kubernetes API action.
+- However, if you configure overly broad permissions, the application might be able to do much more than it needs. That is the security risk RBAC helps prevent.
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+A real example
+
+- Suppose a Pod uses the ServiceAccount monitoring-sa.
+- You want it to list Pods but not delete them.
+
+  Action	                                      Expected result
+List Pods	                                          Allowed
+Get Pod details	                              Allowed if get is granted
+Delete a Pod	                                      Denied
+Create a Deployment	                      Denied unless separately permitted
+
+- You define the allowed actions in a Role, then associate that Role with the ServiceAccount using a RoleBinding.
+
+ServiceAccount: monitoring-sa
+          |
+          v
+    RoleBinding
+          |
+          v
+  Role: pod-reader
+          |
+          v
+Allowed: get, list, watch Pods
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+What if we give every application admin permissions?
+
+- Imagine an application is compromised.
+- With narrowly scoped permissions, the attacker has fewer Kubernetes actions available through that application's identity.
+- With excessive permissions, the attacker might delete workloads, modify resources, or access Secrets if those actions are authorized.
+- This is why DevOps engineers follow the principle of least privilege: grant only the permissions a workload needs.
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+How does this relate to EKS, IRSA and Pod Identity?
+
+- Remember that these systems control different things:
+    * Kubernetes RBAC   -> Access to Kubernetes API resources
+    * IRSA              -> AWS permissions associated with a Kubernetes workload
+    * EKS Pod Identity  -> AWS permissions associated with a Kubernetes workload
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Important distinction for your DevOps interviews
+
+- Kubernetes RBAC controls what an identity can do inside Kubernetes — for example, list Pods or read ConfigMaps.
+- IRSA / EKS Pod Identity give a Kubernetes workload an AWS identity so it can access AWS services — for example, read from S3 or retrieve a secret from AWS
+Secrets Manager.
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) What happens when you deploy an app without RBAC?
+
+- Let's understand what happens when an application is deployed without RBAC permissions configured for it.
+
+- The application can still run normally. RBAC does not control whether Kubernetes can create or run your Pod. It controls what the application's identity
+is authorized to do through the Kubernetes API.
+
+- Imagine you deploy a Python application that needs to read the list of Pods in its namespace.
+    Application starts               =>   Kubernetes schedules the Pod and runs the container.
+    Application serves requests      =>   Its normal application logic can work without Kubernetes API access.
+    Application tries to list Pods   =>   If its ServiceAccount lacks the required permission, the Kubernetes API returns 403 Forbidden.
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) But what if we don't create a Role or RoleBinding?
+
+- A Pod usually uses its namespace's default ServiceAccount if you don't specify another one.
+
+- If the application tries to access the Kubernetes API using that identity, the request is subject to the cluster's authorization configuration. In a standard
+RBAC-configured cluster, it won't have permission to list Pods unless that permission is granted to it.
+
+                                                Application Pod
+                                                      |
+                                                      | Request: List Pods
+                                                      v
+                                                Kubernetes API Server
+                                                      |
+                                                      v
+                                                Authorization check
+                                                      |
+                                                      v
+                                                403 Forbidden
+
+- Important: Not creating your own Role or RoleBinding does not mean all access is automatically allowed or that every application will fail. Kubernetes 
+authorization configuration and any permissions already granted to the identity determine the result.
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Is RBAC mandatory for every application?
+
+- No. It depends on what your application needs.
+- If an application doesn't need Kubernetes API access, avoid granting it unnecessary permissions.
+
+-----------------------------------------------|---------------------------------------------------------------------|
+      Application	                             |                     Needs Kubernetes API permissions?               |
+-----------------------------------------------|---------------------------------------------------------------------|
+Simple Nginx website	                         |                             Usually no                              |
+Python API serving HTTP requests	             |                             Usually no                              |
+Monitoring app discovering Pods	               |                 Yes, if it reads Pod information through the API    |
+Controller managing Deployments	               |                 Yes, for the resources and actions it manages       |
+----------------------------------------------------------------------------------------------------------------------
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Why does RBAC matter for security?
+
+- Suppose an attacker compromises your application.
+- With least-privilege RBAC, the attacker's access through that application's Kubernetes identity is limited.
+- With overly broad permissions, the attacker might be able to read Secrets, delete Pods, or modify workloads, depending on the granted permissions.
+
+
+One more distinction for EKS:
+- RBAC controls access to Kubernetes resources, such as Pods and Deployments.
+- IRSA / EKS Pod Identity provides AWS IAM permissions, such as reading from S3.
+- “An application can be deployed and run without custom RBAC permissions. However, if it needs to interact with the Kubernetes API, its requests will be 
+denied unless its identity has the required permissions through the cluster's authorization configuration. RBAC follows the principle of least privilege and
+limits the impact of a compromised workload.”
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------
