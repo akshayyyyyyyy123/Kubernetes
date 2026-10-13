@@ -1,0 +1,104 @@
+Let's do the Role + RoleBinding demo using YAML files. We'll grant monitoring-sa permission to read Pods in the default namespace only.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+How it works
+
+                                                ServiceAccount: monitoring-sa  
+                                                              ⬇
+                                                RoleBinding: pod-reader-ns-binding
+                                                Connects the identity to the Role
+                                                              ⬇
+                                                        Role: pod-reader-ns
+                                              Allows get, list and watch on Pods in 
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Step 1 — Create the Role
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pod-reader-ns
+  namespace: default
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+
+
+# kubectl apply -f pod-reader-role-ns.yaml
+role.rbac.authorization.k8s.io/pod-reader-ns created
+
+# kubectl get role pod-reader-ns -n default
+NAME            CREATED AT
+pod-reader-ns   2026-10-13T17:50:32Z
+
+- What this means: The Role defines read-only Pod permissions in the default namespace.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Step 2 — Create the RoleBinding
+
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pod-reader-ns-binding
+  namespace: default
+subjects:
+  - kind: ServiceAccount
+    name: monitoring-sa
+    namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: pod-reader-ns
+
+
+# kubectl apply -f pod-reader-rolebinding-ns.yaml
+rolebinding.rbac.authorization.k8s.io/pod-reader-ns-binding created
+
+
+# kubectl get rolebinding pod-reader-ns-binding -n default                                                                                           
+NAME                    ROLE                 AGE
+pod-reader-ns-binding   Role/pod-reader-ns   39s
+
+
+Remember:
+  - subjects identifies who receives the permissions.
+  - roleRef identifies the Role whose permissions are granted.
+  - The RoleBinding's namespace determines where those permissions apply.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Step 3 — Test the permissions
+
+i) Check whether monitoring-sa can list Pods in default:
+# kubectl auth can-i list pods \                                                                                                                      
+  -n default \
+  --as=system:serviceaccount:default:monitoring-sa
+yes
+
+
+ii) Now check kube-system:
+# kubectl auth can-i list pods \                                                                                                                     
+  -n kube-system \
+  --as=system:serviceaccount:default:monitoring-sa
+no
+
+Expected: no from this RoleBinding alone. Your earlier ClusterRoleBinding still exists and grants monitoring-sa permission to list Pods across namespaces,
+so with both bindings active, the actual result will be yes.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Final comparison
+------------------------------------------------------------------------------------------------------------------------
+                                                                                                                       |
+Feature                              Role + RoleBinding                      ClusterRole + ClusterRoleBinding          |
+-----------------------------------------------------------------------------------------------------------------------|
+Permission scope                      One namespace                          Cluster-wide when bound cluster-wide      |
+Can grant Pod read access                  Yes                                              Yes                        |
+Can grant Node access                 Not through a namespaced Role                         Yes                        |
+YAML resource types                    Role, RoleBinding                       ClusterRole, ClusterRoleBinding         |
+-----------------------------------------------------------------------------------------------------------------------|
