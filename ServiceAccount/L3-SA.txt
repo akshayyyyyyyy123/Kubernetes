@@ -4,6 +4,7 @@ Why do we need a ServiceAccount?
 - Kubernetes needs to know which application is making a request so it can determine what that application is allowed to do.
 - For example, suppose you have a Python application running inside a Pod. The application needs to read Kubernetes resources or access AWS services.
 - Without a suitable identity, Kubernetes cannot associate the application with a specific ServiceAccount for authentication and authorisation.
+**** A Kubernetes ServiceAccount can act as an identity bridge between an application running inside a Pod and Kubernetes API/external systems such as AWS***
 
 ----------------------------------------------------------------------------------------------------------------------------------------------------------
 
