@@ -1,0 +1,85 @@
+ClusterRole + ClusterRoleBinding hands-on demo
+
+- ClusterRole + ClusterRoleBinding hands-on demo in our Minikube cluster using YAML files.
+- We'll give monitoring-sa permission to list Pods across all namespaces, then verify that it works.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+How it works
+
+                                        ServiceAccount: monitoring-sa
+                                                    Identity
+                                                       ⬇
+                                    ClusterRoleBinding: pod-reader-global-binding
+                                          Connects identity to permissions
+                                                       ⬇
+                                          ClusterRole: pod-reader-global
+                                            Allows get, list, watch on Pods
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+STEP 01 — Create the ClusterRole
+
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: pod-reader-global
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+
+# kubectl apply -f pod-reader-clusterrole.yaml
+clusterrole.rbac.authorization.k8s.io/pod-reader-global created
+
+# kubectl get clusterrole pod-reader-global
+NAME                  CREATED AT
+pod-reader-global     2026-10-13T16:56:45Z
+
+
+- Here, apiGroups: [""] means the core Kubernetes API group. The permissions apply to Pods across namespaces when granted cluster-wide.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+STEP 02 — Create the ClusterRoleBinding
+
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: pod-reader-global-binding
+subjects:
+  - kind: ServiceAccount
+    name: monitoring-sa
+    namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: pod-reader-global
+
+
+# kubectl apply -f pod-reader-clusterrolebinding.yaml
+clusterrolebinding.rbac.authorization.k8s.io/pod-reader-global-binding created
+
+# kubectl get clusterrolebinding pod-reader-global-binding                                                                                            
+NAME                        ROLE                            AGE
+pod-reader-global-binding   ClusterRole/pod-reader-global   59s
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+STEP 03 - Test the permissions
+
+i) First, test listing Pods in the default namespace:
+# kubectl auth can-i list pods -n default --as=system:serviceaccount:default:monitoring-sa
+yes
+
+ii) Now test listing Pods in kube-system:
+# kubectl auth can-i list pods -n kube-system --as=system:serviceaccount:default:monitoring-sa
+yes
+
+iii) Test deleting pods:
+# kubectl auth can-i delete pods -n kube-system --as=system:serviceaccount:default:monitoring-sa
+no
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------------
