@@ -1,0 +1,107 @@
+1) Role v/s ClusterRole
+
+* Role
+  - It is a namespace-scoped definition.
+  - A Role grants permissions within a specific namespace where the Role is defined.
+  - Example: Allow monitoring-sa to list Pods only in default.
+
+
+* ClusterRole
+  - It is a Cluster-level definition.
+  - It can define permissions for resources across namespaces or cluster-scoped resources such as Nodes.
+  - Example: Define permission to list Pods across namespaces when used with a ClusterRoleBinding.
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+2) How the bindings work
+
+-----------------------------------------|--------------------------------------------|
+|      Resource                          |             Scope of granted access        |
+|----------------------------------------|--------------------------------------------|
+|      Role + RoleBinding                |              One namespace                 |
+| ClusterRole + RoleBinding              |              One namespace                 |
+| ClusterRole + ClusterRoleBinding       |              Cluster-wide                  |
+--------------------------------------------------------------------------------------|
+
+- Remember: a ClusterRole by itself does not grant anyone permissions. It must be bound to a subject.
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+3) Inspect existing ClusterRoles
+  - Let's start by inspecting the ClusterRoles already present in Minikube.
+
+# kubectl get clusterroles
+
+NAME                                                                   CREATED AT
+admin                                                                  2026-09-13T10:19:14Z
+cluster-admin                                                          2026-09-13T10:19:14Z
+edit                                                                   2026-09-13T10:19:14Z
+kubeadm:get-nodes                                                      2026-09-13T10:19:15Z
+system:aggregate-to-admin                                              2026-09-13T10:19:14Z
+system:aggregate-to-edit                                               2026-09-13T10:19:14Z
+system:aggregate-to-view                                               2026-09-13T10:19:14Z
+system:auth-delegator                                                  2026-09-13T10:19:14Z
+system:basic-user                                                      2026-09-13T10:19:14Z
+system:certificates.k8s.io:certificatesigningrequests:nodeclient       2026-09-13T10:19:14Z
+system:certificates.k8s.io:certificatesigningrequests:selfnodeclient   2026-09-13T10:19:14Z
+system:certificates.k8s.io:kube-apiserver-client-approver              2026-09-13T10:19:14Z
+system:certificates.k8s.io:kube-apiserver-client-kubelet-approver      2026-09-13T10:19:14Z
+system:certificates.k8s.io:kubelet-serving-approver                    2026-09-13T10:19:14Z
+system:certificates.k8s.io:legacy-unknown-approver                     2026-09-13T10:19:14Z
+system:controller:attachdetach-controller                              2026-09-13T10:19:14Z
+system:controller:certificate-controller                               2026-09-13T10:19:14Z
+system:controller:clusterrole-aggregation-controller                   2026-09-13T10:19:14Z
+system:controller:cronjob-controller                                   2026-09-13T10:19:14Z
+system:controller:daemon-set-controller                                2026-09-13T10:19:14Z
+system:controller:deployment-controller                                2026-09-13T10:19:14Z
+system:controller:disruption-controller                                2026-09-13T10:19:14Z
+system:controller:endpoint-controller                                  2026-09-13T10:19:14Z
+system:controller:endpointslice-controller                             2026-09-13T10:19:14Z
+system:controller:endpointslicemirroring-controller                    2026-09-13T10:19:14Z
+system:controller:ephemeral-volume-controller                          2026-09-13T10:19:14Z
+system:controller:expand-controller                                    2026-09-13T10:19:14Z
+system:controller:generic-garbage-collector                            2026-09-13T10:19:14Z
+system:controller:horizontal-pod-autoscaler                            2026-09-13T10:19:14Z
+system:controller:job-controller                                       2026-09-13T10:19:14Z
+system:controller:legacy-service-account-token-cleaner                 2026-09-13T10:19:14Z
+system:controller:namespace-controller                                 2026-09-13T10:19:14Z
+system:controller:node-controller                                      2026-09-13T10:19:14Z
+system:controller:persistent-volume-binder                             2026-09-13T10:19:14Z
+system:controller:pod-garbage-collector                                2026-09-13T10:19:14Z
+system:controller:pv-protection-controller                             2026-09-13T10:19:14Z
+system:controller:pvc-protection-controller                            2026-09-13T10:19:14Z
+system:controller:replicaset-controller                                2026-09-13T10:19:14Z
+system:controller:replication-controller                               2026-09-13T10:19:14Z
+system:controller:resource-claim-controller                            2026-09-13T10:19:14Z
+system:controller:resourcequota-controller                             2026-09-13T10:19:14Z
+system:controller:root-ca-cert-publisher                               2026-09-13T10:19:14Z
+system:controller:route-controller                                     2026-09-13T10:19:14Z
+system:controller:selinux-warning-controller                           2026-09-13T10:19:14Z
+system:controller:service-account-controller                           2026-09-13T10:19:14Z
+system:controller:service-cidrs-controller                             2026-09-13T10:19:14Z
+system:controller:service-controller                                   2026-09-13T10:19:14Z
+system:controller:statefulset-controller                               2026-09-13T10:19:14Z
+system:controller:ttl-after-finished-controller                        2026-09-13T10:19:14Z
+system:controller:ttl-controller                                       2026-09-13T10:19:14Z
+system:controller:validatingadmissionpolicy-status-controller          2026-09-13T10:19:14Z
+system:controller:volumeattributesclass-protection-controller          2026-09-13T10:19:14Z
+system:coredns                                                         2026-09-13T10:19:16Z
+system:discovery                                                       2026-09-13T10:19:14Z
+system:heapster                                                        2026-09-13T10:19:14Z
+system:kube-aggregator                                                 2026-09-13T10:19:14Z
+system:kube-controller-manager                                         2026-09-13T10:19:14Z
+system:kube-dns                                                        2026-09-13T10:19:14Z
+system:kube-scheduler                                                  2026-09-13T10:19:14Z
+system:kubelet-api-admin                                               2026-09-13T10:19:14Z
+system:monitoring                                                      2026-09-13T10:19:14Z
+system:node                                                            2026-09-13T10:19:14Z
+system:node-bootstrapper                                               2026-09-13T10:19:14Z
+system:node-problem-detector                                           2026-09-13T10:19:14Z
+system:node-proxier                                                    2026-09-13T10:19:14Z
+system:persistent-volume-provisioner                                   2026-09-13T10:19:14Z
+system:public-info-viewer                                              2026-09-13T10:19:14Z
+system:service-account-issuer-discovery                                2026-09-13T10:19:14Z
+system:volume-scheduler                                                2026-09-13T10:19:14Z
+view                                                                   2026-09-13T10:19:14Z
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------
