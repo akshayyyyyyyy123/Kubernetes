@@ -1,0 +1,74 @@
+We'll cover three Kubernetes probes:
+- Liveness probe: Should Kubernetes restart this container?
+- Readiness probe: Should this Pod receive traffic?
+- Startup probe: Has this slow-starting application finished starting up?
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+What is a probe in Kubernetes?
+- A probe is a health check performed by the Kubernetes kubelet to determine the state of a container or its application.
+- Kubernetes can tell whether a container process is running, but that doesn't necessarily mean the application inside it is functioning correctly.
+- For example, imagine your NGINX container is running, but the application is stuck and cannot respond to HTTP requests. Kubernetes might still show the
+container as Running.
+- Probes help Kubernetes detect situations like this and take the appropriate action.
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Why do we need three different probes?
+
+(i) Liveness probe
+  - Question: Is the application still healthy?
+  - Example: Your application is deadlocked. The container process is still running, but it cannot make progress.
+  - If you don't configure it: Kubernetes may leave the stuck application running indefinitely because the process hasn't exited. Requests may fail until
+something else detects the problem.
+  - If it fails: Kubernetes restarts the container after the configured failure threshold.
+  - A liveness probe detects an unhealthy or stuck application and triggers a container restart when its failure threshold is reached.
+
+(ii) Readiness probe
+  - Question: Can this application handle traffic right now?
+  - Example: Your application has started, but it is loading a large configuration file or waiting for a required dependency before serving requests.
+  - If you don't configure it: Kubernetes generally considers a running Pod ready when no readiness probe is configured. A Service may send traffic to it before it can 
+handle requests correctly.
+  - If it fails: The Pod is marked not ready and removed from the ready endpoints used by regular Services, so new traffic is no longer routed to it through those
+endpoints.
+
+
+(iii) Startup probe
+  - Question: Has the application finished starting up?
+  - Example: Your Java application needs 90 seconds to initialize, load classes, and establish connections.
+  - If you don't configure it: Kubernetes starts liveness and readiness checks according to their own settings. If the liveness probe begins too early and repeatedly 
+fails, Kubernetes may restart the application before it finishes starting.
+  - If it fails: Kubernetes restarts the container once the configured failure threshold is reached.
+
+- Without suitable probes, Kubernetes can mistake a running-but-unhealthy application for a healthy one. This can lead to failed requests, unnecessary restarts,
+or premature restarts during startup.
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Remember this for interviews
+
+--------------------------------------------------------------------------------------------------------------------------------------------|
+Probe	                    Main purpose	                                                    Failure action                                  |
+--------------------------------------------------------------------------------------------------------------------------------------------|                            
+Liveness	                Detect a stuck or unhealthy application	                          Restart container                               |
+Readiness	                Control whether the Pod receives regular Service traffic	        Mark Pod unready                                |
+Startup	                  Allow slow-starting applications time to initialize	              Restart container if startup fails persistently |
+--------------------------------------------------------------------------------------------------------------------------------------------|
+
+A few important details:
+  - Probes are optional; Kubernetes doesn't automatically configure all three for every container.
+  - A failed readiness probe does not restart the container.
+  - A failed liveness probe does restart the container after its failure threshold is reached.
+  - A startup probe, when configured, delays liveness and readiness checks until startup succeeds.
+  - A probe only works as well as its health-check logic. For example, restarting an application because a shared database is temporarily unavailable
+can make an outage worse.
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+SUMMARY
+
+✅ Startup probe — Checks whether the application has finished starting, especially when startup takes a long time. 
+✅ Readiness probe — Checks whether the application is ready to serve traffic. 
+✅ Liveness probe — Checks whether the application is still healthy and should continue running, not simply whether it's serving traffic.
+
+- For example, an application might be running but deadlocked. It cannot process requests, so a liveness probe can detect the problem and trigger a restart.
