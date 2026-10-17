@@ -1,0 +1,189 @@
+Startup Probe
+  Let's prove why a Startup Probe matters with a real Minikube experiment
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+STEP 01 — Understand the scenario
+
+- Imagine a Java application takes 60 seconds to initialize.
+- If its liveness probe starts checking too early and fails repeatedly, Kubernetes may restart the container before the application finishes starting.
+It could get stuck in a restart loop.
+- A startup probe solves this: Kubernetes waits for the startup probe to succeed before running the liveness and readiness probes.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+STEP 02 — Create the YAML
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: startup-demo
+spec:
+  containers:
+    - name: nginx
+      image: nginx:alpine
+      ports:
+        - containerPort: 80
+
+      startupProbe:
+        httpGet:
+          path: /
+          port: 80
+        periodSeconds: 5
+        failureThreshold: 12
+
+      livenessProbe:
+        httpGet:
+          path: /
+          port: 80
+        periodSeconds: 5
+        failureThreshold: 3
+
+      readinessProbe:
+        httpGet:
+          path: /
+          port: 80
+        periodSeconds: 5
+
+
+What do these settings mean?
+  - startupProbe: checks whether startup has completed.
+  - failureThreshold: 12 × periodSeconds: 5: allows roughly 60 seconds of startup-probe failures before the startup probe fails and Kubernetes restarts
+the container.
+  - livenessProbe: checks whether the running application remains healthy.
+  - readinessProbe: checks whether it can receive traffic.
+  - The liveness and readiness probes won't begin until the startup probe succeeds.
+
+
+# kubectl apply -f startup-probe.yaml
+pod/startup-demo created
+
+
+# kubectl describe pod startup-demo
+Containers:
+  nginx:
+    Container ID:   docker://d1778af94c41945d3feadf3e475da01a018b3ffd164390a86377fcaa75891c21
+    Image:          nginx:alpine
+    Image ID:       docker-pullable://nginx@sha256:72ba65eb42c10344912a84ff42408db7d34f2feb642204570ab8fc5ffd29f1d3
+    Port:           80/TCP
+    Host Port:      0/TCP
+    State:          Running
+      Started:      Sat, 17 Oct 2026 18:47:45 +0530
+    Ready:          True
+    Restart Count:  0
+    Liveness:       http-get http://:80/ delay=0s timeout=1s period=5s #success=1 #failure=3
+    Readiness:      http-get http://:80/ delay=0s timeout=1s period=5s #success=1 #failure=3
+    Startup:        http-get http://:80/ delay=0s timeout=1s period=5s #success=1 #failure=12
+    Environment:    <none>
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-bh98g (ro)
+Events:
+  Type    Reason     Age   From               Message
+  ----    ------     ----  ----               -------
+  Normal  Scheduled  10s   default-scheduler  Successfully assigned default/startup-demo to minikube
+  Normal  Pulled     11s   kubelet            Container image "nginx:alpine" already present on machine
+  Normal  Created    11s   kubelet            Created container: nginx
+  Normal  Started    11s   kubelet            Started container nginx
+
+
+# kubectl logs startup-demo
+2026/10/17 13:17:45 [notice] 1#1: start worker process 37
+2026/10/17 13:17:45 [notice] 1#1: start worker process 38
+2026/10/17 13:17:45 [notice] 1#1: start worker process 39
+10.244.0.1 - - [17/Oct/2026:13:17:50 +0000] "GET / HTTP/1.1" 200 896 "-" "kube-probe/1.34" "-"
+10.244.0.1 - - [17/Oct/2026:13:17:51 +0000] "GET / HTTP/1.1" 200 896 "-" "kube-probe/1.34" "-"
+10.244.0.1 - - [17/Oct/2026:13:17:55 +0000] "GET / HTTP/1.1" 200 896 "-" "kube-probe/1.34" "-"
+10.244.0.1 - - [17/Oct/2026:13:17:56 +0000] "GET / HTTP/1.1" 200 896 "-" "kube-probe/1.34" "-"
+10.244.0.1 - - [17/Oct/2026:13:18:00 +0000] "GET / HTTP/1.1" 200 896 "-" "kube-probe/1.34" "-"
+10.244.0.1 - - [17/Oct/2026:13:18:01 +0000] "GET / HTTP/1.1" 200 896 "-" "kube-probe/1.34" "-"
+10.244.0.1 - - [17/Oct/2026:13:18:05 +0000] "GET / HTTP/1.1" 200 896 "-" "kube-probe/1.34" "-"
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+STEP 03 - We'll deliberately configure a startup probe that fails so you can observe the restart behavior.
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: startup-demo
+spec:
+  containers:
+    - name: nginx
+      image: nginx:alpine
+      ports:
+        - containerPort: 80
+
+      startupProbe:
+        httpGet:
+          path: /health
+          port: 80
+        periodSeconds: 5
+        failureThreshold: 12
+
+      livenessProbe:
+        httpGet:
+          path: /
+          port: 80
+        periodSeconds: 5
+        failureThreshold: 3
+
+      readinessProbe:
+        httpGet:
+          path: /
+          port: 80
+        periodSeconds: 5
+
+
+# kubectl apply -f startup-probe.yaml
+pod/startup-break-demo created
+
+
+# kubectl get pod startup-break-demo
+NAME                 READY   STATUS    RESTARTS   AGE
+startup-break-demo   0/1     Running   0          42s
+
+
+# kubectl describe pod startup-break-demo
+Events:
+  Type     Reason     Age                From               Message
+  ----     ------     ----               ----               -------
+  Normal   Scheduled  62s                default-scheduler  Successfully assigned default/startup-break-demo to minikube
+  Normal   Pulled     2s (x2 over 62s)   kubelet            Container image "nginx:alpine" already present on machine
+  Normal   Created    2s (x2 over 62s)   kubelet            Created container: nginx
+  Normal   Started    2s (x2 over 62s)   kubelet            Started container nginx
+  Warning  Unhealthy  2s (x12 over 57s)  kubelet            Startup probe failed: HTTP probe failed with statuscode: 404
+  Normal   Killing    2s                 kubelet            Container nginx failed startup probe, will be restarted
+
+
+# kubectl get pod startup-break-demo                                                                                                                  
+NAME                 READY   STATUS    RESTARTS     AGE
+startup-break-demo   0/1     Running   2 (3s ago)   2m3s
+
+
+What happened in your experiment?
+          Startup probe failed: HTTP probe failed with statuscode: 404
+          Container nginx failed startup probe, will be restarted
+
+The sequence was:
+  * The NGINX container started.
+  * The startup probe sent HTTP GET requests to /health (or whichever path you configured).
+  * NGINX returned 404 Not Found because that endpoint doesn't exist.
+  * The startup probe failed 12 consecutive checks.
+  * Kubelet terminated and restarted the container.
+  * The same cycle repeated, resulting in RESTARTS = 2.
+Your Pod still shows Running because its current container instance is running, even though Kubernetes has restarted it multiple times.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+The most important difference
+
+--------------------------------------------------------------------------------|
+Probe	                                What you observed                         |
+--------------------------------------------------------------------------------|
+Readiness	                      0/1 Running, restart count stays 0              |
+Liveness	                    Container restarts after repeated probe failures  |
+Startup	                    Container restarts when startup never succeeds      |
+--------------------------------------------------------------------------------|
+
+- When a startup probe is configured, Kubernetes does not run the liveness or readiness probes until the startup probe succeeds. This protects slow-starting 
+applications from premature liveness restarts.
