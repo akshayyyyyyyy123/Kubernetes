@@ -1,0 +1,110 @@
+Liveness probe
+  - Now let's test the difference. With a liveness probe, repeated failures can cause Kubernetes to restart the container.
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Step 1 — Create liveness-probe.yaml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: liveness-demo
+spec:
+  containers:
+    - name: nginx
+      image: nginx:alpine
+      ports:
+        - containerPort: 80
+      livenessProbe:
+        httpGet:
+          path: /health
+          port: 80
+        initialDelaySeconds: 5
+        periodSeconds: 5
+        failureThreshold: 3
+
+- We're deliberately using /health again because NGINX returns 404 for that path.
+- Here, failureThreshold: 3 means Kubernetes will restart the container after three consecutive failed liveness checks, subject to the probe timing and any 
+configured termination grace period.
+
+
+# kubectl apply -f liveness-probe.yaml
+pod/liveness-demo created
+
+
+# kubectl get pod liveness-demo
+NAME            READY   STATUS    RESTARTS      AGE
+liveness-demo   1/1     Running   6 (97s ago)   3m38s
+
+
+# kubectl describe pod liveness-demo
+
+Containers:
+  nginx:
+    Container ID:   docker://39e804f411a3e74fb87ea7fe9bd166a1b9a6b8ce9a25d1813f2607dfb9474a62
+    Image:          nginx:alpine
+    Image ID:       docker-pullable://nginx@sha256:72ba65eb42c10344912a84ff42408db7d34f2feb642204570ab8fc5ffd29f1d3
+    Port:           80/TCP
+    Host Port:      0/TCP
+    State:          Waiting
+      Reason:       CrashLoopBackOff
+    Last State:     Terminated
+      Reason:       Completed
+      Exit Code:    0
+      Started:      Sat, 17 Oct 2026 18:10:14 +0530
+      Finished:     Sat, 17 Oct 2026 18:10:33 +0530
+    Ready:          False
+    Restart Count:  6
+    Liveness:       http-get http://:80/health delay=5s timeout=1s period=5s #success=1 #failure=3
+    Environment:    <none>
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-dt4rr (ro)
+
+Events:
+  Type     Reason     Age                   From               Message
+  ----     ------     ----                  ----               -------
+  Normal   Scheduled  4m5s                  default-scheduler  Successfully assigned default/liveness-demo to minikube
+  Normal   Created    2m20s (x6 over 4m5s)  kubelet            Created container: nginx
+  Normal   Started    2m20s (x6 over 4m5s)  kubelet            Started container nginx
+  Warning  Unhealthy  2m5s (x18 over 4m)    kubelet            Liveness probe failed: HTTP probe failed with statuscode: 404
+  Normal   Killing    2m5s (x6 over 3m50s)  kubelet            Container nginx failed liveness probe, will be restarted
+  Warning  BackOff    99s (x7 over 3m5s)    kubelet            Back-off restarting failed container nginx in pod liveness-demo_default(f20bbe22-6b24-47ec-b539-2adb13202334)
+  Normal   Pulled     39s (x7 over 4m5s)    kubelet            Container image "nginx:alpine" already present on machine
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Interpret your output
+
+# kubectl get pod liveness-demo                                                                                                                       
+NAME            READY   STATUS             RESTARTS        AGE
+liveness-demo   0/1     CrashLoopBackOff   6 (2m18s ago)   6m4s
+
+And the critical event:
+  - Liveness probe failed: HTTP probe failed with statuscode: 404. Container nginx failed liveness probe, will be restarted
+  - Kubelet sent GET /health to NGINX.
+  - NGINX returned 404 because /health doesn't exist.
+  - The liveness probe failed three consecutive times, reaching failureThreshold: 3.
+  - Kubelet terminated and restarted the container.
+  - The restart count increased to 3.
+
+Important: Kubernetes restarted the container inside the existing Pod. It did not create a new Pod. That's why the Pod name remains liveness-demo.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Compare your two hands-on experiments
+
+Observation                  	      Readiness probe	                    Liveness probe
+Probe endpoint	                    /health	                              /health
+HTTP response	                      404	                                   404
+Pod readiness	                      0/1	                                 Can return to 1/1 after restart
+Container restarted?	              No	                                    Yes
+Restart count	                      0	                                       3
+Pod replaced?                      	No	                                     No
+
+
+****** 
+    Why is liveness showing 1/1 despite failing? Because Kubernetes keeps restarting NGINX, and each new container briefly becomes ready according to the Pod's
+    readiness state—there is no readiness probe configured on this Pod. A running container without a readiness probe is normally considered ready.
+*******
+
+This is a useful production lesson: a Pod can appear ready while its container is repeatedly restarting. Always inspect RESTARTS and Events, not just READY.
