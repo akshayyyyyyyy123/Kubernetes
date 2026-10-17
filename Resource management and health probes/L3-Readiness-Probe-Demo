@@ -1,0 +1,139 @@
+Readiness Probe Demo
+
+---------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+STEP 01 — Create a Pod with a readiness probe
+
+- We'll use NGINX and check whether its HTTP endpoint responds successfully.
+- The kubelet running on the node where the Pod is scheduled performs the probe.
+- readiness-probe.yaml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: readiness-demo
+  labels:
+    app: readiness-demo
+spec:
+  containers:
+    - name: nginx
+      image: nginx:alpine
+      ports:
+        - containerPort: 80
+      readinessProbe:
+        httpGet:
+          path: /
+          port: 80
+        initialDelaySeconds: 5
+        periodSeconds: 5
+
+
+# kubectl apply -f readiness-probe.yaml
+pod/readiness-demo created
+
+
+# kubectl get pod readiness-demo
+NAME             READY   STATUS    RESTARTS   AGE
+readiness-demo   1/1     Running   0          43s
+
+
+What did we configure?
+  - httpGet: Kubernetes sends an HTTP request to / on port 80.
+  - initialDelaySeconds: 5: This tells kubelet to wait 5 seconds after the container starts before performing the first probe.
+  - periodSeconds: 5: Kubelet performs an HTTP GET request to / on port 80 approximately every 5 seconds to check whether NGINX is ready to serve traffic.
+If the endpoint responds successfully with an HTTP status between 200 and 399, the check succeeds.
+
+Example timeline
+0 sec  -  NGINX container starts
+5 sec  -  First readiness probe
+10 sec -  Second readiness probe
+
+- if the readiness probe fails, Kubernetes marks the Pod as not ready. It does not restart the container.
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+We'll deliberately break the readiness probe and observe whether Kubernetes restarts the container.
+
+Step 1 — Break the probe
+
+- Currently, your probe checks path: /, which NGINX serves successfully.
+- Keep everything else unchanged. NGINX doesn't have a /health page by default, so it should return HTTP 404, causing the readiness probe to fail.
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: readiness-break-demo
+  labels:
+    app: readiness-break-demo
+spec:
+  containers:
+    - name: nginx
+      image: nginx:alpine
+      ports:
+        - containerPort: 80
+      readinessProbe:
+        httpGet:
+          path: /health
+          port: 80
+        initialDelaySeconds: 5
+        periodSeconds: 5
+
+
+# kubectl apply -f readiness-probe.yaml
+pod/readiness-break-demo created
+
+
+# kubectl logs readiness-break-demo
+2026/10/17 11:53:21 [notice] 1#1: start worker process 38
+2026/10/17 11:53:21 [notice] 1#1: start worker process 39
+10.244.0.1 - - [17/Oct/2026:11:53:28 +0000] "GET /health HTTP/1.1" 404 153 "-" "kube-probe/1.34" "-"
+2026/10/17 11:53:28 [error] 30#30: *1 open() "/usr/share/nginx/html/health" failed (2: No such file or directory), client: 10.244.0.1, server: localhost, request: "GET /health HTTP/1.1", host: "10.244.1.103:80"
+10.244.0.1 - - [17/Oct/2026:11:53:33 +0000] "GET /health HTTP/1.1" 404 153 "-" "kube-probe/1.34" "-"
+2026/10/17 11:53:33 [error] 31#31: *2 open() "/usr/share/nginx/html/health" failed (2: No such file or directory), client: 10.244.0.1, server: localhost, request: "GET /health HTTP/1.1", host: "10.244.1.103:80"
+2026/10/17 11:53:38 [error] 33#33: *3 open() "/usr/share/nginx/html/health" failed (2: No such file or directory), client: 10.244.0.1, server: localhost, request: "GET /health HTTP/1.1", host: "10.244.1.103:80"
+10.244.0.1 - - [17/Oct/2026:11:53:38 +0000] "GET /health HTTP/1.1" 404 153 "-" "kube-probe/1.34" "-"
+2026/10/17 11:53:43 [error] 34#34: *4 open() "/usr/share/nginx/html/health" failed (2: No such file or directory), client: 10.244.0.1, server: localhost, request: "GET /health HTTP/1.1", host: "10.244.1.103:80"
+
+
+# kubectl describe pod readiness-break-demo
+Events:
+  Type     Reason     Age                From               Message
+  ----     ------     ----               ----               -------
+  Normal   Scheduled  98s                default-scheduler  Successfully assigned default/readiness-break-demo to minikube
+  Normal   Pulled     98s                kubelet            Container image "nginx:alpine" already present on machine
+  Normal   Created    98s                kubelet            Created container: nginx
+  Normal   Started    98s                kubelet            Started container nginx
+  Warning  Unhealthy  0s (x20 over 91s)  kubelet            Readiness probe failed: HTTP probe failed with statuscode: 404
+
+
+# kubectl get pod readiness-break-demo                                                                                                                
+NAME                   READY   STATUS    RESTARTS   AGE
+readiness-break-demo   0/1     Running   0          10m
+
+- Both the Pod and its container are running, but the container is not Ready.
+- 0/1 — The container isn't ready to receive normal Service traffic.
+- Running — The container is still running.
+- 0 restarts — Kubernetes hasn't restarted the container.
+
+- The kube-probe/1.34 user-agent in the access logs confirms the request came from Kubernetes' probe mechanism.
+- This demonstrates that a readiness failure doesn't restart the container. Kubernetes keeps checking the endpoint and can mark the Pod ready again if the probe succeeds.
+- Your events show x63 over 9m14s. That means Kubernetes recorded repeated probe failures over that period. Unlike liveness probes, readiness probes do not restart the container after repeated failures.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+NOTE
+
+# kubectl get pod readiness-break-demo                                                                                                                
+NAME                   READY   STATUS    RESTARTS   AGE
+readiness-break-demo   0/1     Running   0          10m
+
+STATUS = Running: The Pod has been scheduled to a node, and at least one of its primary containers is running.
+READY = 0/1: The Pod has 1 container, but 0 containers are Ready.
+RESTARTS = 0: The container hasn't restarted.
+
+In your readiness-break-demo example, the likely situation is:
+    Pod: readiness-break-demo
+    └── Container: Running, but Not Ready
+        └── Readiness probe: Failing
+
+- A failing readiness probe does not stop the container. It marks the container as not ready to receive traffic through Kubernetes Services.
