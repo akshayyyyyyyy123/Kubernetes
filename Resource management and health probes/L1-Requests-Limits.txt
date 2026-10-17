@@ -1,0 +1,169 @@
+Resource Requests and Limits
+
+
+What problem do they solve?
+  - Suppose you deploy 10 application pods on your Kubernetes cluster. Each Pod consumes CPU and memory.
+  - Without resource configuration, a Pod might consume excessive resources and affect other workloads. Kubernetes uses requests and limits to help manage 
+resource allocation.
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Requests vs limits
+
+-> Requests
+Kubernetes uses requests when deciding which node has enough available resources to schedule a Pod. CPU requests also influence CPU allocation under 
+contention.
+Example: Request 250m CPU and 128Mi memory.
+
+-> Limits
+Limits define the maximum resource usage enforced for a container.
+Example: Limit 500m CPU and 256Mi memory.
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Example YAML
+
+resources:
+  requests:
+    cpu: "250m"
+    memory: "128Mi"
+  limits:
+    cpu: "500m"
+    memory: "256Mi"
+
+- Here's what those values mean:
+
+    Setting	                            Meaning
+250m CPU request	                    0.25 CPU core
+500m CPU limit	                  0.5 CPU core maximum
+128Mi memory request	            128 mebibytes requested
+256Mi memory limit	                256 mebibytes maximum
+
+- Remember these two behaviors:
+CPU: exceeding the limit generally causes throttling, not container termination.
+Memory: exceeding the limit can cause the container to be terminated with an OOMKilled status.
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Hands-on — create your first resource-limited Pod
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: resource-demo
+spec:
+  containers:
+    - name: app
+      image: nginx:alpine
+      resources:
+        requests:
+          cpu: "250m"
+          memory: "128Mi"
+        limits:
+          cpu: "500m"
+          memory: "256Mi"
+
+
+# kubectl apply -f resource-demo.yaml
+pod/resource-demo created
+
+
+# kubectl get pod resource-demo                                                                                                                       
+NAME            READY   STATUS    RESTARTS   AGE
+resource-demo   1/1     Running   0          11s
+
+
+# kubectl describe pod resource-demo
+Containers:
+  app:
+    Container ID:   docker://3fed2a78cc8d6a92ecd0a3074285cb502d3b8b318939cb09184ad09ddab52d21
+    Image:          nginx:alpine
+    Image ID:       docker-pullable://nginx@sha256:72ba65eb42c10344912a84ff42408db7d34f2feb642204570ab8fc5ffd29f1d3
+    Port:           <none>
+    Host Port:      <none>
+    State:          Running
+      Started:      Sat, 17 Oct 2026 13:28:48 +0530
+    Ready:          True
+    Restart Count:  0
+    Limits:
+      cpu:     500m
+      memory:  256Mi
+    Requests:
+      cpu:        250m
+      memory:     128Mi
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+What to verify
+
+--------------------------------------------------------------------------|
+Field	                  Expected value	        Meaning                   |
+--------------------------------------------------------------------------|
+CPU Request	                250m    	          0.25 CPU core requested   |
+Memory Request	            128Mi	              128 MiB requested         |
+CPU Limit	                  500m	              Maximum 0.5 CPU core      |
+Memory Limit	              256Mi	              Maximum 256 MiB           |
+--------------------------------------------------------------------------|
+
+Request: Kubernetes uses these values to decide whether a node has enough resources to schedule your Pod.
+CPU limit: Your container can use up to 0.5 CPU core; if it tries to exceed that, it can be throttled.
+Memory limit: Your container can use up to 256 MiB. Exceeding the limit can cause it to be terminated with OOMKilled.
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Inspect actual resource usage
+
+# kubectl top pod resource-demo
+NAME              CPU(cores)     MEMORY(bytes)
+resource-demo     0m             8Mi
+
+
+Understand your output
+---------------------------------------------------------------------------|
+Metric	      Current usage	      Configured request	   Configured limit  |
+---------------------------------------------------------------------------|
+CPU	           0m	                250m	                  500m             |
+Memory	       8Mi	              128Mi	                  256Mi            |
+---------------------------------------------------------------------------|
+
+- CPU 0m: Usage is currently so low that it rounds down to zero millicores at the reported precision. NGINX is mostly idle.
+- Memory 8Mi: The container is currently using approximately 8 MiB of memory.
+- Request vs actual usage: Your Pod requests 128Mi of memory for scheduling, but currently uses only 8Mi.
+- Limit vs actual usage: Your memory limit is 256Mi; you're nowhere near it.
+- Remember: kubectl top reports a usage snapshot, not a historical graph.
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Interview question
+
+resources:
+  requests:
+    cpu: "250m"
+    memory: "128Mi"
+  limits:
+    cpu: "500m"
+    memory: "256Mi"
+If your Pod requests 128Mi of memory but only uses 8Mi, how much memory does Kubernetes reserve for scheduling purposes?
+
+
+Soln:- When scheduling this Pod, Kubernetes considers: CPU: 250m and Memory: 128Mi
+
+- The scheduler checks whether the node has enough allocatable resources to accommodate the Pod's requests, including the requests of other Pods already 
+scheduled there.
+- The 256Mi memory limit is enforced at runtime; it is not the value the scheduler normally uses for this capacity check.
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Quick interview check
+Suppose a node has 200Mi of allocatable memory available. Your Pod requests 128Mi and has a memory limit of 256Mi.
+Can Kubernetes schedule this Pod onto that node?
+A) Yes
+B) No
+
+- The node has 200Mi available, and your Pod requests only 128Mi.
+- (200Mi - 128Mi) => 72Mi
+- So the scheduler can place the Pod on that node, assuming the other scheduling requirements are satisfied.
+**** Interview takeaway: The scheduler evaluates resource requests, while container resource limits govern runtime consumption ****
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------
+
