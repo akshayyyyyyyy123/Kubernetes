@@ -1,0 +1,35 @@
+# Kubernetes Health Probes — Quick Notes
+
+## 1. Startup Probe
+- **Purpose:** Checks whether the application has finished starting up.
+- **Use case:** Applications that require more time to initialize.
+- **If it fails repeatedly:** Kubernetes restarts the container after the configured `failureThreshold` is reached.
+- **If it succeeds:** Kubernetes stops checking the startup probe and begins liveness and readiness checks.
+
+## 2. Readiness Probe
+- **Purpose:** Checks whether the application is ready to serve traffic.
+- **Use case:** Applications that need time to load configuration or connect to dependencies before accepting requests.
+- **If it fails:** The Pod is marked `NotReady` and removed from the ready endpoints used by its Service.
+- **Does it restart the container?** No.
+
+## 3. Liveness Probe
+- **Purpose:** Checks whether the application is healthy and should continue running.
+- **Use case:** Detecting stuck or deadlocked applications.
+- **If it fails repeatedly:** Kubernetes restarts the container after the configured `failureThreshold` is reached.
+
+## Container Restart vs Pod Replacement
+
+- **Readiness probe failure:** Container continues running; no restart.
+- **Liveness probe failure:** Container restarts; the Pod usually retains the same name and UID.
+- **Startup probe failure:** Container restarts; the Pod usually retains the same name and UID.
+- A Deployment or other workload controller creates a replacement Pod if the existing Pod is deleted or terminates and its desired replica count needs to be maintained.
+
+## Quick Comparison
+
+| Probe | Main question | On repeated failure |
+|-------|---------------|---------------------|
+| Startup | Has startup finished? | Restart container |
+| Readiness | Can it serve traffic? | Mark Pod NotReady |
+| Liveness | Is it healthy enough to keep running? | Restart container |
+
+**Interview tip:** When a startup probe is configured, liveness and readiness probes remain inactive until startup succeeds. Probe failures alone do not delete or recreate the Pod.
