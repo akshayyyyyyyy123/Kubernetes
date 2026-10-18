@@ -1,0 +1,85 @@
+HPA (Horizontal Pod Autoscaler)
+  We'll learn the concept, implement it in Minikube, generate load, and watch Kubernetes automatically scale Pods up and down.
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+What is HPA?
+  - HPA stands for Horizontal Pod Autoscaler. It automatically adjusts the number of Pod replicas in a workload, such as a Deployment, based on observed metrics
+like CPU or memory utilization.
+  - For example, suppose your Deployment has 2 replicas and your HPA targets average CPU utilization of 50%. If CPU utilization rises above the target, HPA may
+increase the replica count. When demand falls, it can reduce the replica count, subject to its configuration and scaling behavior.
+  - HPA performs horizontal scaling.
+
+
+                                                          High CPU usage
+                                                  Application receives more traffic
+                                                                ⬇
+                                                        HPA evaluates metrics    
+                                              Compares current utilization against the target  
+                                                                ⬇
+                                              -------------------------------------------
+                                              ⬇                                        ⬇
+                                          Scale out                                  Scale In
+                                      (3 Pods → 6 Pods)                           (6 Pods → 3 Pods)
+
+Important distinction:
+  * Horizontal scaling: increase or decrease the number of Pods.
+  * Vertical scaling: increase or decrease the CPU/memory allocated to a Pod.
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+What is the HPA controller?
+  - The HPA controller is a control loop inside the Kubernetes control plane that periodically checks metrics and adjusts the desired replica count of a workload
+to match the configured scaling target.
+  - Think of it as the decision-maker for automatic Pod scaling.
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+How HPA Works
+
+                                                1. Application Pods
+                                      Consume CPU or memory while processing work  
+                                                        ⬇
+                                                2. Metrics Server
+                                      Collects resource usage metrics from the cluster
+                                                        ⬇
+                                                3. HPA controller
+                            Compares actual metrics against the configured target and calculates
+                                              the desired replica count
+                                                        ⬇
+                                               4. Scale subresource
+                                    Controller updates the workload's desired replica count
+                                                        ⬇
+                                            5. Deployment / ReplicaSet controllers
+                                        Create or remove Pods to match the desired count
+
+One important detail: the HPA controller doesn't directly create each Pod. It adjusts the desired replica count; the workload controllers reconcile that change.
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Who does what?
+
+------------------------------|------------------------------------------------------------------------------------------------|
+  Component	                  |                      Responsibility                                                            |
+------------------------------|------------------------------------------------------------------------------------------------|
+Metrics Server	              |            Provides CPU and memory usage metrics                                               |
+HPA controller	              |            Decides how many replicas are desired                                               |
+HPA resource	                |            Stores the scaling configuration, such as target CPU and replica bounds             |
+Deployment controller         |       	   Manages the Deployment's ReplicaSet                                                 |  
+ReplicaSet controller	        |            Ensures the desired number of Pods exists                                           |
+Kubelet	                      |            Runs containers on the node and performs configured health probes                   |
+------------------------------|------------------------------------------------------------------------------------------------|
+
+The HPA controller is part of the kube-controller-manager in a typical Kubernetes control plane. In managed Kubernetes services such as EKS, AWS manages the 
+control plane components for you.
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Where does the HPA controller run in a typical Kubernetes control plane?
+As part of kube-controller-manager
+
+Who provides CPU usage metrics for a basic CPU-based HPA?
+Metrics Server exposes resource usage metrics through the Kubernetes Metrics API.
+
+HPA decides to increase replicas from 2 to 5. Who creates the additional Pods?
+The workload controllers, including the ReplicaSet controller
