@@ -1,0 +1,194 @@
+HPA Hands-On
+
+- We'll do the HPA hands-on using Minikube, step by step, just like we'd do it in a real Kubernetes environment.
+- Our goal is to deploy an application, configure HPA, generate CPU load, and watch Kubernetes automatically scale the number of Pods.
+
+                                                Users generate traffic
+                                              Requests increase CPU usage
+                                                         ⬇
+                                                    Metrics Server  
+                                            Collects CPU and memory metrics
+                                                          ⬇
+                                                    HPA controller
+                                          Decides the desired number of replicas
+                                                          ⬇
+                                                Deployment scales Pods
+                                                Example: 1 → 3 → 5 Pods
+
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+What exactly does Metrics Server do?
+  - Imagine you've deployed an application in Kubernetes. It has three Pods running.
+  - Pod A uses 20% CPU. Pod B uses 85% CPU. Pod C uses 40% CPU.
+  - How does Kubernetes know how much CPU each Pod is using? That's where Metrics Server comes in.
+  - Metrics Server collects resource usage metrics, such as CPU and memory consumption, from the Kubernetes nodes and makes them available to Kubernetes through 
+  the Metrics API.
+  - Think of it as a monitoring assistant that tells Kubernetes how much CPU and memory your Pods are currently consuming.
+
+
+                                                Your application Pods
+                                        Pod A: 20% CPU · Pod B: 85% CPU · Pod C: 40% CPU
+                                                         ⬇
+                                                  Kubelet on each node
+                                        Provides resource usage metrics, using the 
+                                            container runtime's statistics
+                                                          ⬇
+                                                    Metrics Server
+                                        Collects and exposes recent CPU and memory metrics
+                                                          ⬇
+                                                    HPA controller
+                                        Uses the metrics to decide whether to increase or decrease replicas
+
+  - One important distinction: Metrics Server doesn't scale your Pods. It supplies the metrics; the HPA controller makes scaling decisions.
+  - Also, Metrics Server isn't a full monitoring solution like Prometheus. It provides resource metrics for Kubernetes features such as HPA and kubectl top.
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Let's understand why HPA needs Metrics Server
+  - Suppose you're running an online shopping application.
+  - During normal hours, 2 Pods can handle the traffic. During a sale, thousands of users arrive, and CPU usage increases.
+  - Without HPA, you might have to increase the replicas manually.
+  - With HPA, Kubernetes can adjust the replica count automatically based on CPU utilization.
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Step 01 — Verify metrics are available
+Here we want to confirm Kubernetes can actually retrieve CPU and memory metrics, not just that Metrics Server is running.
+
+# kubectl top nodes
+NAME       CPU(cores)   CPU(%)   MEMORY(bytes)   MEMORY(%)
+minikube   147m         1%       1694Mi          21%
+
+
+# kubectl top pods                                                                                                                                   
+NAME                   CPU(cores)   MEMORY(bytes)
+configmap-keyref-pod   0m           3Mi
+readiness-demo         1m           8Mi
+startup-demo           1m           8Mi
+storage-demo-0         0m           8Mi
+storage-demo-1         0m           8Mi
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Step 02 - Write YAML files
+
+php-apache-deployment.yaml
+  This file defines our application and the resources allocated to each container.
+
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: php-apache
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: php-apache
+  template:
+    metadata:
+      labels:
+        app: php-apache
+    spec:
+      containers:
+        - name: php-apache
+          image: registry.k8s.io/hpa-example
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 200m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 128Mi
+
+
+Let's understand the important parts.
+- replicas: 1 — initially, we want one application Pod.
+- requests.cpu: 200m — the container requests 0.2 CPU cores for scheduling and resource accounting.
+- limits.cpu: 500m — the container is limited to 0.5 CPU cores.
+- labels — identify the Pods managed by this Deployment.
+
+
+File 2: php-apache-hpa.yaml
+This file defines the autoscaling rules.
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: php-apache
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: php-apache
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50
+
+What does this YAML mean?
+  scaleTargetRef -> The Deployment HPA should scale
+  minReplicas: 1 -> Never scale below 1 replica
+  maxReplicas: 5 -> Never scale above 5 replicas
+  name: cpu      -> Use CPU metrics
+  averageUtilization: 50 -> Target average CPU utilization of 50% of the requested CPU
+
+
+
+File 03: create service file
+service.yaml
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: php-apache
+spec:
+  selector:
+    app: php-apache
+  ports:
+    - port: 80
+      targetPort: 80
+  type: ClusterIP
+
+What does this Service do?
+- Your Pod has an IP address, but we don't want our load generator to depend on that changing Pod IP.
+- The Service provides a stable internal endpoint named php-apache. Kubernetes directs requests sent to it to the matching Pods.
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+STEP 03 - Apply the YAML files
+
+# kubectl apply -f php-apache-deployment.yaml
+deployment.apps/php-apache created
+
+# kubectl apply -f php-apache-hpa.yaml
+horizontalpodautoscaler.autoscaling/php-apache created
+
+# kubectl apply -f service.yaml                                                                                                                      
+service/php-apache created
+
+
+**** VALIDATION *****
+
+# kubectl get pods -l app=php-apache                                                                                                                  
+NAME                         READY   STATUS    RESTARTS   AGE
+php-apache-8cdd76588-kqdwk   1/1     Running   0          3m54s
+
+# kubectl get service php-apache
+NAME         TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)   AGE
+php-apache   ClusterIP   10.97.212.139   <none>        80/TCP    7s
+
+# kubectl get deployment php-apache
+NAME         READY   UP-TO-DATE   AVAILABLE   AGE
+php-apache   1/1     1            1           8m2s
+
+
+
