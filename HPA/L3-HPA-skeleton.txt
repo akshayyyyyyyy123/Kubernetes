@@ -1,0 +1,128 @@
+Overall HPA skeleton
+
+- The HPA YAML has four main parts:
+
+
+                                                  Resource identity
+                                              apiVersion, kind, metadata
+                                         What Kubernetes resource are we creating?
+                                                         ⬇
+                                                    Scaling target
+                                                  spec.scaleTargetRef
+                                            Which workload should HPA scale?
+                                                          ⬇
+                                                   Scaling boundaries
+                                                minReplicas, maxReplicas
+                                        What are the minimum and maximum replicas?
+                                                          ⬇
+                                                Scaling metrics (spec.metrics)
+                                  What metric should drive scaling, and what is the target?
+
+
+------------------------------------------------------------------------------------------------------------------------------------------------------
+
+1. Resource identity
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: php-apache
+
+|--------------------|-------------------------------------------------------------------------------|
+|  Field	           |               Simple meaning                                                  |
+|--------------------|-------------------------------------------------------------------------------|
+| apiVersion	       |         Identifies the Kubernetes API version used to define this resource.   |
+| kind	             |         Tells Kubernetes that we're creating an HPA resource.                 |
+| metadata.name	     |         Gives this particular HPA the name php-apache.                        |
+|--------------------|-------------------------------------------------------------------------------|
+
+------------------------------------------------------------------------------------------------------------------------------------------------------
+
+2. spec — the desired scaling configuration
+
+- The spec section describes how we want the HPA to behave.
+- Inside it, we configure the target workload, the allowed replica range, and the metrics used to decide whether scaling is needed.
+
+
+2A. scaleTargetRef — what should be scaled?
+  
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: php-apache
+
+This tells HPA which Kubernetes resource it should control.
+  * apiVersion: apps/v1 — the API version of the target Deployment
+  * kind: Deployment — the target is a Deployment
+  * name: php-apache — the Deployment's name
+
+Notice that there are two different API versions in our YAML:
+  * autoscaling/v2 describes the HPA resource itself
+  * apps/v1 describes the Deployment that HPA will scale
+
+For our lab, the relationship is:
+                            HPA: php-apache
+                                  |
+                                  | scaleTargetRef
+                                  v
+                              Deployment: php-apache
+                                  |
+                                  v
+                              ReplicaSet
+                                  |
+                                  v
+                                 Pods
+
+- HPA adjusts the desired replica count on the Deployment through Kubernetes' scaling mechanism. The Deployment and ReplicaSet controllers then 
+create or remove Pods as needed.
+
+
+2B. minReplicas and maxReplicas — the boundaries
+
+minReplicas: 1
+maxReplicas: 5
+
+- These fields establish the permitted replica range for the autoscaler.
+- minReplicas: 1 means HPA won't scale the target below one replica.
+- maxReplicas: 5 means HPA won't scale it above five replicas.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------
+
+3. metrics — what triggers scaling?
+
+metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 50
+
+
+|------------------------|------------------------------------------------------------------------|
+|  Field	               |               Simple meaning                                           |
+|------------------------|------------------------------------------------------------------------|
+| metrics	               |   A list of metrics HPA can use for scaling decisions.                 |
+| type: Resource	       |   The metric is a Kubernetes resource metric, such as CPU or memory.   |
+| resource.name: cpu	   |   We want to use CPU usage.                                            |
+| target                 |   Defines the desired metric level.                                    |
+| type: Utilization      |   Expresses the target as a percentage of the requested CPU.           |
+| averageUtilization: 50 |   Targets average CPU utilization of 50% across the relevant Pods.     |
+---------------------------------------------------------------------------------------------------
+
+Why do we use a list under metrics? Because HPA can use more than one metric. For example, it could use both CPU utilization and memory utilization.
+When multiple metrics are configured, HPA evaluates them and generally chooses the largest replica recommendation.
+
+
+What does 50% CPU utilization mean?
+- In our Deployment YAML, we set:
+resources:
+  requests:
+    cpu: 200m
+
+- Here, 200m means 200 millicores, or 0.2 CPU cores (200/1000=0.2)
+- If a Pod uses 100m CPU, its utilization relative to the request is: (100m / 200m) * 100 => 50%
+- That matches our HPA target.
+- If the observed CPU utilization stays above the target, HPA may recommend more replicas. If it stays below the target, HPA may recommend fewer replicas, 
+subject to the minimum and its scaling behavior.
+- One detail to remember: the target is an average across the relevant Pods, not a rule that each individual Pod must use exactly 50% CPU.
