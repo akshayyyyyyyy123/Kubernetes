@@ -1,0 +1,24 @@
+What is KEDA?
+  - KEDA stands for Kubernetes Event-Driven Autoscaling.
+  - KEDA allows Kubernetes to scale applications based on events and external metrics — such as messages waiting in a queue, incoming events, or pending jobs.
+  - For example, imagine your application processes messages from an AWS SQS queue.
+      * When 10 messages are waiting, you may need only 1 Pod
+      * When 10,000 messages are waiting, you may need 10 Pods
+      * When the queue is empty, you may want to scale the application down to zero Pods
+
+  - KEDA helps Kubernetes react to that workload demand.
+
+
+                                              apiVersion, kind, metadata
+                                         What Kubernetes resource are we creating?
+                                                         ⬇
+                                                    Scaling target
+                                                  spec.scaleTargetRef
+                                            Which workload should HPA scale?
+                                                          ⬇
+                                                   Scaling boundaries
+                                                minReplicas, maxReplicas
+                                        What are the minimum and maximum replicas?
+                                                          ⬇
+                                                Scaling metrics (spec.metrics)
+                                  What metric should drive scaling, and what is the target?
