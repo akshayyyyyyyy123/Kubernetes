@@ -182,13 +182,111 @@ service/php-apache created
 NAME                         READY   STATUS    RESTARTS   AGE
 php-apache-8cdd76588-kqdwk   1/1     Running   0          3m54s
 
+
 # kubectl get service php-apache
 NAME         TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)   AGE
 php-apache   ClusterIP   10.97.212.139   <none>        80/TCP    7s
+
 
 # kubectl get deployment php-apache
 NAME         READY   UP-TO-DATE   AVAILABLE   AGE
 php-apache   1/1     1            1           8m2s
 
 
+# kubectl describe hpa php-apache                                                                                                                     
+Name:                                                  php-apache
+Namespace:                                             default
+Labels:                                                <none>
+Annotations:                                           <none>
+CreationTimestamp:                                     Tue, 20 Oct 2026 01:28:47 +0530
+Reference:                                             Deployment/php-apache
+Metrics:                                               ( current / target )
+  resource cpu on pods  (as a percentage of request):  0% (1m) / 50%
+Min replicas:                                          1
+Max replicas:                                          5
+Deployment pods:                                       1 current / 1 desired
+Conditions:
+  Type            Status  Reason            Message
+  ----            ------  ------            -------
+  AbleToScale     True    ReadyForNewScale  recommended size matches current size
+  ScalingActive   True    ValidMetricFound  the HPA was able to successfully calculate a replica count from cpu resource utilization (percentage of request)
+  ScalingLimited  True    TooFewReplicas    the desired replica count is less than the minimum replica count
+Events:           <none>
 
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+STEP 04 - Create a load generator
+
+Think of the load generator as a client that repeatedly sends HTTP requests to Apache. The demo application performs CPU-intensive work for requests, allowing us to observe autoscaling.
+
+
+* load-generator.yaml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: load-generator
+spec:
+  restartPolicy: Never
+  containers:
+    - name: busybox
+      image: busybox:1.36
+      command:
+        - /bin/sh
+        - -c
+        - |
+          while true; do
+            wget -q -O- http://php-apache > /dev/null
+          done
+
+
+What does this YAML do?
+  - busybox:1.36 — a lightweight image that can send HTTP requests.
+  - http://php-apache — uses the Service you created to reach Apache.
+  - while true — repeats requests continuously.
+  - > /dev/null — discards the response body so the terminal isn't flooded with output.
+
+# kubectl apply -f load-generator.yaml
+pod/load-generator created
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+STEP 05: Watch autoscaling
+
+# kubectl get pods -l app=php-apache -w
+NAME                         READY   STATUS    RESTARTS      AGE
+php-apache-8cdd76588-kqdwk   1/1     Running   1 (14h ago)   14h
+php-apache-8cdd76588-7ggbt   0/1     Pending   0             0s
+php-apache-8cdd76588-7ggbt   0/1     Pending   0             0s
+php-apache-8cdd76588-vldgc   0/1     Pending   0             0s
+php-apache-8cdd76588-lpqcn   0/1     Pending   0             0s
+php-apache-8cdd76588-vldgc   0/1     Pending   0             0s
+php-apache-8cdd76588-lpqcn   0/1     Pending   0             0s
+php-apache-8cdd76588-7ggbt   0/1     ContainerCreating   0             0s
+php-apache-8cdd76588-vldgc   0/1     ContainerCreating   0             0s
+php-apache-8cdd76588-lpqcn   0/1     ContainerCreating   0             0s
+php-apache-8cdd76588-lpqcn   1/1     Running             0             1s
+php-apache-8cdd76588-7ggbt   1/1     Running             0             2s
+php-apache-8cdd76588-vldgc   1/1     Running             0             3s
+php-apache-8cdd76588-fmn94   0/1     Pending             0             0s
+php-apache-8cdd76588-fmn94   0/1     Pending             0             0s
+php-apache-8cdd76588-fmn94   0/1     ContainerCreating   0             0s
+php-apache-8cdd76588-fmn94   1/1     Running             0             3s
+
+
+# kubectl get hpa php-apache --watch
+NAME         REFERENCE               TARGETS       MINPODS   MAXPODS   REPLICAS   AGE
+php-apache   Deployment/php-apache   cpu: 0%/50%   1         5         1          14h
+php-apache   Deployment/php-apache   cpu: 1%/50%   1         5         1          15h
+php-apache   Deployment/php-apache   cpu: 250%/50%   1         5         1          15h
+php-apache   Deployment/php-apache   cpu: 250%/50%   1         5         4          15h
+php-apache   Deployment/php-apache   cpu: 250%/50%   1         5         5          15h
+php-apache   Deployment/php-apache   cpu: 112%/50%   1         5         5          15h
+php-apache   Deployment/php-apache   cpu: 83%/50%    1         5         5          15h
+php-apache   Deployment/php-apache   cpu: 84%/50%    1         5         5          15h
+php-apache   Deployment/php-apache   cpu: 84%/50%    1         5         5          15h
+php-apache   Deployment/php-apache   cpu: 84%/50%    1         5         5          15h
+php-apache   Deployment/php-apache   cpu: 52%/50%    1         5         5          15h
+php-apache   Deployment/php-apache   cpu: 0%/50%     1         5         5          15h
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
