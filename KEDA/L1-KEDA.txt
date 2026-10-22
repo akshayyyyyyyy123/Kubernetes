@@ -1,6 +1,6 @@
 What is KEDA?
   - KEDA stands for Kubernetes Event-Driven Autoscaling.
-  - KEDA allows Kubernetes to scale applications based on events and external metrics — such as messages waiting in a queue, incoming events, or pending jobs.
+  - KEDA allows Kubernetes to scale applications based on events and external metrics — such as messages waiting in a queue, incoming events or pending jobs.
   - For example, imagine your application processes messages from an AWS SQS queue.
       * When 10 messages are waiting, you may need only 1 Pod
       * When 10,000 messages are waiting, you may need 10 Pods
@@ -9,16 +9,29 @@ What is KEDA?
   - KEDA helps Kubernetes react to that workload demand.
 
 
-                                              apiVersion, kind, metadata
-                                         What Kubernetes resource are we creating?
+                                                External event source
+                                          SQS queue, Kafka topic, Redis list, 
+                                               Prometheus metric, etc.
                                                          ⬇
-                                                    Scaling target
-                                                  spec.scaleTargetRef
-                                            Which workload should HPA scale?
+                                                        KEDA
+                                           Checks the event source and exposes 
+                                                   scaling metrics
                                                           ⬇
-                                                   Scaling boundaries
-                                                minReplicas, maxReplicas
-                                        What are the minimum and maximum replicas?
+                                                    Kubernetes HPA
+                                           Decides how many replicas are needed
                                                           ⬇
-                                                Scaling metrics (spec.metrics)
-                                  What metric should drive scaling, and what is the target?
+                                                    Application Pods
+                                            Scale up or down based on demand
+
+  - One important point: KEDA doesn't replace HPA. For many workloads, KEDA connects external event metrics to Kubernetes autoscaling and creates/manages the HPA for you. It can also support scaling workloads down to zero, which ordinary CPU-based HPA doesn't do by itself.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Why did we need KEDA? What problem existed before it?
+  - Let's use a real-world DevOps example.
+  - Imagine company XYZ has a background worker that processes loan application events from a message queue. The worker is a Kubernetes Deployment.
+  - Message queue -> Contains pending loan application events
+  - Worker Pods -> Read and process the events
+
+
+
