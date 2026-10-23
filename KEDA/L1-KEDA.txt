@@ -34,4 +34,47 @@ Why did we need KEDA? What problem existed before it?
   - Worker Pods -> Read and process the events
 
 
+Problem A: Keep a fixed number of Pods
+  - You configure three replicas and leave them running all day.
+  - You pay the resource cost of keeping Pods available even when there is no work. During a sudden spike, the fixed number of workers might not be enough.
 
+|--------|-------------------|----------------|----------------------------|
+|  Time  |	Pending messages |	Worker Pods	  |  Problem                   |
+|------- |-------------------|----------------|----------------------------|
+| 2 AM   |	0	               |       3	      |  Resources may be wasted   |
+| 10 AM  |	100	             |       3	      |  Might be sufficient       |
+| 11 AM  |	10,000	         |       3	      |  Workers may not keep up   |
+---------------------------------------------------------------------------|
+
+
+Problem B: Use the HPA we just learned
+  - You configure HPA to scale when CPU utilization exceeds 50%.
+  - But imagine the queue has 10,000 pending messages while the worker Pods use only 15% CPU because they are waiting on network calls or a slow external API.
+  - The queue is overloaded, but CPU-based HPA may not scale up.
+  - The metric you're watching doesn't necessarily represent the amount of work waiting to be done.
+  - This is where KEDA helps: it can monitor the queue length directly and use that metric to drive scaling.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Important Points
+
+- KEDA can scale based on different signals, depending on what you configure it to monitor.
+- Imagine you have an application running in Kubernetes.
+    * HPA: “CPU usage is high. Let me add more Pods.”
+    * KEDA with a queue trigger: “There are 10,000 messages waiting. Let me scale up the worker Pods.”
+    * KEDA with CPU metrics configured: It can also participate in CPU-based scaling through Kubernetes HPA.
+
+
+Simple example
+
+|------------------------------------------------------|---------------------------------------------|
+|        Situation	                                   |            What triggers scaling?           |
+|------------------------------------------------------|---------------------------------------------|
+|          CPU usage reaches 80%	                     |                CPU-based HPA                |
+|  5,000 messages are waiting in a queue	             |                KEDA queue trigger           |
+|  A Prometheus metric crosses a configured threshold	 |             KEDA Prometheus trigger         |
+------------------------------------------------------------------------------------------------------
+
+- The key difference: HPA doesn't natively understand your application's queue backlog. KEDA has specialized scalers that can monitor queues and other event sources.
+- And remember: KEDA doesn't automatically monitor every possible signal. You configure the trigger that matches your application.
+- Think of it this way: HPA is an autoscaling mechanism; KEDA helps Kubernetes autoscale using event-driven signals.
