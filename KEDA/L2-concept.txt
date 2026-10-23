@@ -1,0 +1,113 @@
+KEDA — Theory Summary
+
+What is KEDA?
+- KEDA = Kubernetes Event-Driven Autoscaling.
+- It helps Kubernetes automatically scale application workloads based on events and external metrics, such as queue length, incoming messagesor Prometheus metrics.
+- KEDA complements HPA; it does not simply replace it.
+- HPA handles replica scaling, while KEDA provides event-driven metrics and activation.
+- KEDA supports scale-to-zero for suitable workloads; standard CPU/memory HPA alone does not.
+- KEDA is particularly useful for asynchronous workers, queue consumers, event processing and batch workloads.
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Why do we need KEDA?
+- Imagine a worker application processing messages from a queue.
+- Queue has 0 messages → we don't need many worker Pods.
+- Queue has 100 messages → a few worker Pods may be enough.
+- Queue has 10,000 messages → we need more worker Pods.
+- CPU-based HPA alone may not detect this backlog if the workers aren't using much CPU.
+- KEDA solves this by allowing scaling based on the actual workload signal, such as the number of pending messages.
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+HPA vs KEDA
+
+|------------------------|------------------------------------------------|--------------------------------------------------------|
+|Feature                 |       	HPA	                                    |                  KEDA                                  |
+|------------------------|------------------------------------------------|--------------------------------------------------------|
+|CPU-based scaling	     |         Yes	                                  |      Can work with CPU-based HPA configuration         |
+|Queue-length scaling	   |     Not built in	                              |                 Yes                                    |
+|Scale from zero	       |   Not with standard CPU/memory metrics alone	  |    Yes, with suitable event triggers                   |
+|Main responsibility	   |   Adjusts Pod replica count	                  |    Connects event sources to Kubernetes autoscaling    |
+|Relationship	           |     Autoscaler	                                | Usually creates/manages an HPA for a ScaledObject      |
+|----------------------------------------------------------------------------------------------------------------------------------|
+
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+How does KEDA work?
+
+                                                         Event source
+                                                      Example: AWS SQS queue
+                                                              |
+                                                              V
+                                                             KEDA
+                                                  Checks the configured trigger
+                                                              |
+                                                              V
+                                                             HPA
+                                                Determines the desired number 
+                                                          of replicas
+                                                              |
+                                                              V
+                                                        Application Pods
+                                                        Scale up or down
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Important KEDA concepts
+
+- Scaler: Connects to a particular event source or metric, such as SQS, Kafka, Redis or Prometheus.
+- Trigger: The configured signal and threshold that determine when scaling is needed.
+- ScaledObject: A KEDA custom resource that defines how a Deployment or similar scalable workload should scale.
+- HPA: The Kubernetes resource that adjusts the replica count for a ScaledObject workload.
+- Scale to zero: KEDA can scale supported workloads down to zero when idle and activate them when events arrive.
+- Polling interval: How often KEDA checks the trigger, subject to the scaler and configuration.
+- Cooldown period: Helps control how long KEDA waits before scaling a workload back to zero.
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Advantages and disadvantages
+
+Advantages
+  - Scales based on actual workload demand.
+  - Helps reduce idle resource usage.
+  - Supports many event sources.
+  - Can scale suitable workloads from zero.
+  - Integrates with existing Kubernetes workloads.
+
+Disadvantages
+  - Adds components and configuration.
+  - Requires correct event-source authentication and permissions.
+  - Scaling from zero introduces startup latency.
+  - Doesn't fix bottlenecks in databases or external services.
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Synchronous vs Asynchronous workers
+
+Synchronous Workers
+  - You wait until the work is finished.
+  - Example: You request a report from an application. The application generates the report and sends it back before your request finishes.
+  - Request → Generate report → Return response
+  - If generating the report takes 30 seconds, you might wait for 30 seconds.
+
+
+Asynchronous (Async)
+  - You don't have to wait for the work to finish.
+  - Example: You request a report. The application accepts the request, queues the job, and immediately tells you, "Your report is being generated."
+A background worker generates it later.
+  - Request → Queue job → Return acknowledgement → Worker generates report
+  - You can do other things while the report is being generated.
+
+
+How does this connect to KEDA?
+- Imagine a background worker processes emails from a queue:
+  * 0 emails waiting → scale workers down.
+  * 100 emails waiting → run a few workers.
+  * 50,000 emails waiting → scale up more workers.
+- KEDA can monitor the queue backlog and help Kubernetes scale the worker Pods accordingly.
+- Interview takeaway: Synchronous work typically keeps the caller waiting for completion. Asynchronous work lets the caller continue while the task is processed
+separately — making asynchronous workloads a natural fit for queue-based scaling with KEDA.
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------
