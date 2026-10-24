@@ -1,0 +1,216 @@
+Miscellaneous
+
+- KEDA can scale the workloads to zero, whereas standard HPA does not support scaling to zero replicas.
+- KEDA usually works with HPA, rather than replacing it.
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Why can't HPA alone scale to zero?
+
+- Standard Kubernetes HPA requires at least one replica. Its minReplicas must be at least 1. KEDA adds the event-driven activation and scale-to-zero behavior
+around HPA.
+- HPA handles replica scaling based on metrics, while KEDA adds event-source integrations and scale-to-zero capability.
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+What is a CRD?
+
+- It stands for Custom Resource Definition.
+- Kubernetes already understands built-in resources such as Pods, Deployments, and Services. But it doesn't natively understand KEDA-specific resources 
+like ScaledObject.
+- A CRD extends the Kubernetes API so Kubernetes can understand these new resource types.
+- Think of it this way:
+      * CRD: Teaches Kubernetes what a new resource type looks like.
+      * Custom Resource (CR): An actual instance of that resource, created using YAML.
+
+- Example: KEDA ScaledObject
+Suppose you want to scale a worker Deployment based on an AWS SQS queue.
+
+1. CRD — the definition
+Registers ScaledObject as a resource type that Kubernetes can understand.
+
+2. Custom Resource — your YAML
+You create a ScaledObject that specifies which Deployment to scale and which event source to monitor.
+
+3. KEDA acts on the configuration
+KEDA reads the resource and coordinates the scaling behavior.
+
+
+ScaledObject.yaml
+
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: worker-scaler
+spec:
+  scaleTargetRef:
+    name: worker-deployment
+
+  minReplicaCount: 0
+  maxReplicaCount: 10
+
+  triggers:
+    - type: aws-sqs-queue
+      metadata:
+        queueURL: https://sqs.us-east-1.amazonaws.com/123456789/worker-queue
+        queueLength: "5"
+        awsRegion: us-east-1
+
+- This tells KEDA to scale worker-deployment based on the SQS queue metric, with a configured range of 0–10 replicas. The example is illustrative; actual
+AWS authentication and permissions must also be configured.
+
+
+How do you check KEDA CRDs?
+- After installing KEDA, run: # kubectl get crd | grep keda
+- You should see resources such as:
+      * scaledobjects.keda.sh
+      * scaledjobs.keda.sh
+      * triggerauthentications.keda.sh
+      * lustertriggerauthentications.keda.sh
+
+**********
+    - CRD defines a new resource type; a Custom Resource is an instance of that type
+    - For KEDA, ScaledObject is the configuration resource you create, while the ScaledObject CRD teaches Kubernetes how to recognize and validate it.
+**********
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+KEDA Components
+
+* KEDA Scaler
+* KEDA Metrics Server
+* HPA
+* KEDA Operator
+* CRDs
+* Admission Webhook
+
+- KEDA's main runtime components include the Operator, Metrics Server and Admission Webhooks.
+
+(*) KEDA Scaler
+  - A KEDA Scaler is a component which connects to an event source / external source and retrieves the metrics needed for scaling.
+  - It supplies metric information that helps KEDA and HPA manage scaling.
+  - For example, suppose you're using AWS SQS... here scaler connects to AWS SQS and checks the queue length.
+
+
+(*) KEDA Metrics Server
+  - KEDA Metrics Server is a component that exposes the metrics obtained through KEDA's scaler integrations to HPA via Kubernetes' External Metrics API.
+  - It serves that metric through the external metrics API in the format HPA expects.
+  - Here we are not eliminating the HPA, rather working closely with it.
+  - It finally makes the metrics available to the HPA
+
+
+(*) KEDA Operator
+  - It manages activation and scaling behaviour, including scale-to-zero.
+  - It watches the CRDs (Custom Resource Definition)
+  - Handles the overall scaling behaviour.
+
+
+(*) HPA
+  - It calculates the desired replica count when the workload is active.
+
+
+(*) CRDs
+  - CRD extends the Kubernetes API so Kubernetes can understand these new resource types.
+  - Two CRDs you must remember:
+      * ScaledObject — scales a Deployment, StatefulSet, or another supported scalable workload based on events or metrics.
+      * ScaledJob — creates and scales Kubernetes Jobs/ CronJobs to process event-driven work.
+
+
+(*) Admission Webhook
+  - KEDA's admission webhook is a runtime component invoked by the Kubernetes API Server to validate ScaledObject YAML configurations 
+(and other applicable KEDA resources) when they are created or updated.
+  - For example, when you apply a ScaledObject ==> # kubectl apply -f scaledobject.yaml
+  - The flow is:
+      * You submit the YAML to the Kubernetes API Server.
+      * The API Server invokes KEDA's admission webhook when the configured webhook rules match.
+      * The webhook validates the resource and can reject an invalid configuration.
+      * If validation succeeds, the API Server continues processing the request and stores the resource.
+
+  - Example: Suppose your ScaledObject has an invalid scaling configuration. The admission webhook can reject it before it is stored in etcd.
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Remember the main KEDA components
+
+|----------------------------|------------------------------------------------------------------------|
+|    Component	             |                 Responsibility                                         |
+|----------------------------|------------------------------------------------------------------------|
+|   KEDA Operator	           |         Coordinates scaling and activation                             |
+| KEDA Metrics Server        |      	 Exposes event metrics to HPA                                   |
+|     Scalers	               |         Obtain metrics from event sources                              |
+| Admission Webhooks	       |         Validate KEDA resources and help enforce configuration rules   |
+|      CRDs	                 |         Define KEDA-specific Kubernetes resource types                 |
+|----------------------------|------------------------------------------------------------------------|
+
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+TriggerAuthentication
+
+  - It is a CRD.
+  - TriggerAuthentication tells KEDA how to authenticate with an external event source when it needs to fetch metrics.
+  - For example, suppose KEDA needs to check the number of messages in an AWS SQS queue. AWS requires credentials and permissions to access that queue. 
+TriggerAuthentication helps KEDA obtain the required authentication information securely.
+  - Example: AWS SQS
+
+                                                          AWS SQS
+                                                  Requires AWS authentication
+                                                             |  
+                                                             V
+                                                    TriggerAuthentication
+                                              Specifies how KEDA obtains credentials
+                                                             |
+                                                             V
+                                                         KEDA Scaler
+                                              Authenticates and retrieves queue metrics
+
+
+Example YAML - Imagine you've stored credentials in a Kubernetes Secret.
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: aws-credentials
+type: Opaque
+stringData:
+  awsAccessKeyID: YOUR_ACCESS_KEY
+  awsSecretAccessKey: YOUR_SECRET_KEY
+---
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: aws-auth
+spec:
+  secretTargetRef:
+    - parameter: awsAccessKeyID
+      name: aws-credentials
+      key: awsAccessKeyID
+    - parameter: awsSecretAccessKey
+      name: aws-credentials
+      key: awsSecretAccessKey
+
+
+  - The credentials above are placeholders, not real credentials. In production, prefer an appropriate workload identity mechanism where supported, 
+rather than long-lived access keys.
+
+  - Your ScaledObject can reference this authentication configuration:
+
+  spec:
+    triggers:
+      - type: aws-sqs-queue
+        metadata:
+          queueURL: https://sqs.us-east-1.amazonaws.com/123456789/worker-queue
+          queueLength: "5"
+          awsRegion: us-east-1
+        authenticationRef:
+          name: aws-auth
+
+
+TriggerAuthentication vs ClusterTriggerAuthentication
+
+|-----------------------------------|------------------------------------------------------------------------------------|
+|        Resource	                  |                      Scope                                                         |
+|-----------------------------------|------------------------------------------------------------------------------------|
+|    TriggerAuthentication	        |          Used by ScaledObject or ScaledJob resources in the same namespace         |
+|ClusterTriggerAuthentication	      |    Can be referenced across namespaces, subject to configuration and permissions   |
+|-----------------------------------|------------------------------------------------------------------------------------|
