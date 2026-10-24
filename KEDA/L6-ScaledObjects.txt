@@ -1,0 +1,131 @@
+Scaled Object
+  - A ScaledObject is a Custom Resource Definition (CRD) in KEDA that links a Kubernetes workload such as a Deployment, StatefulSet or custom resource
+to an external event source or trigger.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+What It Does
+  (*) Binds Workloads to Triggers: 
+        It tells KEDA which application to scale and which event source to watch (e.g., Kafka, RabbitMQ, AWS SQS, PostgreSQL, or Prometheus).
+  (*) Manages the HPA: 
+        KEDA reads the ScaledObject and automatically creates, configures and manages the underlying Kubernetes Horizontal Pod Autoscaler (HPA) on your behalf.
+  (*) Enables Scale-to-Zero: 
+        Unlike standard HPAs, a ScaledObject allows your application pods to scale down completely to 0 when there are no events to process, and scale up to 1 
+(or more) when work arrives.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Structural Skeleton of a KEDA ScaledObject
+
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: string                 
+  namespace: string                                 # SECTION A: Resource identity
+
+spec:
+  scaleTargetRef:              
+    apiVersion: string
+    kind: string
+    name: string
+    envSourceContainerName: string                 # SECTION B: THE TARGET
+
+  minReplicaCount: int         
+  maxReplicaCount: int                             # SECTION C: How low and high can it go?
+
+  cooldownPeriod: int          
+  pollingInterval: int                             # SECTION D: Timing controls  
+  
+  advanced:                    
+    restoreToOriginalReplicaCount: bool
+    horizontalPodAutoscalerConfig:
+      behavior: {}                                 # ADVANCED (Optional): Fine-tuning behavior
+
+  triggers:                    
+    - type: string
+      metadata: {}
+      authenticationRef: {}                        # SECTION E: THE TRIGGERS: What drives the scaling?
+
+
+
+SECTION A: Resource identity
+  - apiVersion: The KEDA API version for this resource.
+  - kind: Tells Kubernetes this resource is a ScaledObject.
+  - metadata.name: Name of this scaling configuration.
+  - metadata.namespace: Namespace where the resource and target workload are located. The target normally needs to be in the same namespace.
+
+SECTION B: THE TARGET
+  - This tells KEDA which workload to scale.
+  - For example, worker-deployment must refer to an existing scalable workload, such as a Deployment. KEDA can then manage scaling for that target.
+
+SECTION C: How low and high can it go?
+  * minReplicaCount: 0 — allows the workload to scale down to zero when idle.
+  * maxReplicaCount: 10 — caps the workload at 10 replicas.
+  * Scaling to zero depends on the trigger and workload configuration being suitable for scale-to-zero.
+
+
+SECTION D: Timing controls  
+  * pollingInterval: 30 — when the workload is at zero, KEDA checks its trigger approximately every 30 seconds to determine whether to activate it.
+      Example:
+          - 10:00:00 — KEDA checks the queue; it's empty.
+          - 10:00:10 — 100 messages arrive.
+          - KEDA may discover those messages at its next poll, around 10:00:30.
+          - It can then activate your worker Pods.
+
+  * cooldownPeriod: 300 — after the trigger stops indicating demand, KEDA waits 300 seconds before scaling the workload back to zero.
+          - When the workload has scaled above zero and the trigger no longer indicates demand, KEDA waits 300 seconds (5 minutes) before scaling it down
+      to zero.
+          - Example:
+              - 10:00 — Your worker Pods finish processing all messages.
+              - KEDA waits for the cooldown period.
+              - If the workload remains idle, KEDA can scale it down to zero after that period.
+
+              --------------------------------------------------------------------------------------------------------
+                      Setting	                Simple meaning	                                        Default
+              --------------------------------------------------------------------------------------------------------
+                  pollingInterval	      How often KEDA checks for work while at zero	               30 seconds
+                  cooldownPeriod	      How long KEDA waits before scaling back to zero	             300 seconds
+              --------------------------------------------------------------------------------------------------------
+
+
+SECTION E: THE TRIGGERS
+  - The heart of KEDA
+  * type: Which scaler to use, such as redis, aws-sqs-queue, kafka, or prometheus.
+  * metadata: Settings that the selected scaler needs to read and interpret its signal.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+How the skeleton works together
+
+* scaleTargetRef -> Which workload?
+* triggers -> What signal tells KEDA that work is waiting?
+* minReplicaCount / maxReplicaCount -> What are the scaling limits?
+* pollingInterval / cooldownPeriod -> How often should KEDA check, and when should it return to zero?
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+EXAMPLE
+
+ScaledObject Skeleton
+
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+
+metadata:
+  name: worker-scaler
+  namespace: default
+
+spec:
+  scaleTargetRef:
+    name: worker-deployment
+
+  minReplicaCount: 0
+  maxReplicaCount: 10
+
+  pollingInterval: 30
+  cooldownPeriod: 300
+
+  triggers:
+    - type: redis
+      metadata:
+        # Trigger-specific settings go here
