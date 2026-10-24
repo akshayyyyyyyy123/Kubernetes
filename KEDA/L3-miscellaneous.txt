@@ -1,0 +1,138 @@
+Miscellaneous
+
+- Kubernetes HPA (Horizontal Pod Autoscaler) supports CPU and memory, but it is not limited to those two metrics.
+- HPA alone, without KEDA, supports more than just CPU and memory.
+- HPA can scale the number of pod replicas based on following types of metrics:
+
+|----------------------------------|----------------------------------------------------------------------------------------|
+|    Metric type	                 |        Examples                                                                        |
+|----------------------------------|----------------------------------------------------------------------------------------|
+|  Resource metrics                |   CPU utilization, memory utilization                                                  |
+|  Pods metrics                    |   Custom metrics measured per pod, such as requests per second.                        |
+|  Object metrics                  |   metric associated with a Kubernetes object, such as an Ingress (ingress req rate)    |
+|  External metrics                |   metrics from outside Kubernetes, such as queue length exposed via metrics adapter    |
+|----------------------------------|----------------------------------------------------------------------------------------|
+
+- The important point is that HPA needs a way to obtain the metrics. 
+- CPU and memory commonly come from Metrics Server, while other metrics typically require additional integrations.
+- CPU and memory are the easiest to configure using Metrics Server. Custom and external metrics generally require a compatible metrics API and an adapter 
+or provider.
+- So, HPA alone can scale based on queue length, provided the necessary external-metrics integration is configured.
+- However KEDA makes event-driven autoscaling easier to configure and operate.
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Metrics Server vs Metrics integration
+
+i) Metrics Server
+- Metrics Server is a Kubernetes component that collects recent CPU and memory usage from nodes and pods and exposes it through the Kubernetes Metrics API.
+- Example: Pod CPU = 80m
+- Mainly used for	resource metrics
+- For example, it provides the data HPA needs to determine whether CPU utilization is above your configured target.
+
+                                              CPU / Memory
+                                      Source: Kubernetes nodes and pods
+                                                   |
+                                                   V
+                                              Metrics Server
+                                  Collects and exposes resource usage through
+                                            the Metrics API
+                                                   |
+                                                   V
+                                                  HPA
+                                    Decides whether to add or remove pods
+
+
+
+ii) Metrics integration
+- Metrics integration means connecting a metric source to Kubernetes so HPA can access that metric.
+- Main purpose is to make metrics available to HPA
+- Example: AWS SQS queue length = 500
+- Used for Resource, custom, or external metrics
+- Metrics integration is the mechanism that makes a particular metric available to HPA
+- CPU/memory: typically use Metrics Server.
+- Custom application metrics: need a compatible custom-metrics API and adapter/provider.
+- External metrics: need a compatible external-metrics API and adapter/provider.
+- Example: HPA cannot automatically read the number of messages waiting in AWS SQS. You must configure an integration that exposes the queue length.
+
+
+                                         External source — AWS SQS
+                                        Queue length = 500 messages
+                                                   |
+                                                   V
+                                        External metrics integration
+                                  A compatible adapter/provider exposes the queue metric
+                                                   |
+                                                   V
+                                                  HPA
+                                    Decides whether to add or remove pods
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+1. External Metric integration
+
+- External metric integration means connecting Kubernetes HPA to a system that provides metrics from outside Kubernetes' normal CPU/memory metrics pipeline.
+- Example: Scaling based on an AWS SQS queue
+    Imagine your application has worker pods that process messages from an AWS SQS queue.
+
+
+                                              AWS SQS Queue
+                                           500 messages waiting
+                                                   |
+                                                   V
+                                        External Metrics integration
+                                    Fetches queue length and exposes it 
+                                              to Kubernetes
+                                                   |
+                                                   V
+                                                  HPA
+                                    Reads the external metric and calculates
+                                                replicas  
+                                                   |
+                                                   V
+                                              Worker pods
+                                      Scale up to process the backlog
+
+
+Why do we need integration?
+- HPA doesn't automatically know how many messages are waiting in AWS SQS.
+- Metrics Server normally provides CPU and memory metrics.
+- AWS SQS knows the queue length.
+- An external metrics adapter/provider makes that queue metric available to HPA through Kubernetes' external metrics API.
+- Without the necessary integration, HPA cannot directly read the SQS queue length.
+
+
+What does this mean in practice?
+
+|-----------------------------------|---------------------------------------------------------------------------------------------|
+|    HPA scaling on                 |                   	What you need                                                           |
+|-----------------------------------|---------------------------------------------------------------------------------------------|
+|      CPU / memory	                |              Metrics Server exposes CPU/Memory metrics                                      |
+| Custom application metric	        |              Custom metrics API and a compatible adapter/provider(metric server provider)   |
+|   AWS SQS queue length	          |              External metrics API and a compatible provider that exposes the queue metric   |
+|-----------------------------------|---------------------------------------------------------------------------------------------|
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+2. CPU/memory-based HPA Scaling
+
+- For CPU/memory-based HPA scaling, you need Metrics Server in a typical Kubernetes setup.
+- The good news is that you don't need a separate custom metrics adapter for CPU/memory.
+
+
+                                              Worker Pods
+                                             CPU usage: 80%
+                                                   |
+                                                   V
+                                              Metrics Server
+                                      Collects CPU and memory usage from kubelets
+                                                   |
+                                                   V
+                                                  HPA
+                                    Compares usage with your target, e.g. 50% CPU
+                                                   |
+                                                   V
+                                              Deployment
+                                    Increases or decreases pod replicas
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------
