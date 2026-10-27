@@ -353,3 +353,47 @@ NAMESPACE   NAME                       REFERENCE               TARGETS         M
 keda-lab    keda-hpa-demo-app-scaler   Deployment/demo-app     cpu: 167%/50%   1         3         3          37m
 
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+KEDA Hands-on — Quick Summary
+
+Does KEDA create the HPA automatically?
+- Yes! You create a ScaledObject, and KEDA automatically creates and manages the corresponding HPA. You do not need to create the HPA YAML separately.
+
+
+What is the naming convention?
+- If your ScaledObject is named demo-app-scaler, KEDA creates an HPA named: keda-hpa-demo-app-scaler
+- The naming pattern is: keda-hpa-<ScaledObject-name>
+
+
+What is the workflow?
+
+                                                You create the ScaledObject  
+                                         Defines the target workload and scaling triggers
+                                                              ⬇
+                                                         KEDA Operator
+                                                  Creates and manages the HPA
+                                                              ⬇
+                                                             HPA
+                                                  Creates and manages the HPA
+                                                              ⬇
+                                                          Deployment
+                                                    Scales its Pods up or down
+
+- KEDA uses a ScaledObject as the configuration for event-driven scaling and automatically creates the HPA. The HPA handles scaling above zero, while KEDA can support scaling to 
+zero when the configured trigger and settings allow it.
+
+
+# kubectl get scaledobject -n keda-lab
+NAME              SCALETARGETKIND      SCALETARGETNAME   MIN   MAX   READY   ACTIVE   FALLBACK   PAUSED   TRIGGERS   AUTHENTICATIONS   AGE
+demo-app-scaler   apps/v1.Deployment   demo-app          1     3     True    True     False      False    cpu                          2d14h
+
+
+# kubectl get hpa -n keda-lab
+NAME                       REFERENCE             TARGETS       MINPODS   MAXPODS   REPLICAS   AGE
+keda-hpa-demo-app-scaler   Deployment/demo-app   cpu: 0%/50%   1         3         1          2d14h
+
+
+Scaled Object -> demo-app-scaler
+KEDA Automatically creates HPA -> keda-hpa-demo-app-scaler
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
