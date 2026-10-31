@@ -1,0 +1,305 @@
+KEDA Hands-On II
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+1. namespace.yaml
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: keda-redis-ns
+
+# kubectl apply -f namespace.yaml                                                                                                                   
+namespace/keda-redis-ns created
+
+----------------------------------------------------------------------------------------------------------------------
+
+2. redis-deployment.yaml
+
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  name: redis-deployment
+  namespace: keda-redis-ns
+
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: redis
+  
+  template:
+    metadata:
+      labels:
+        app: redis
+
+    spec:
+      containers:
+      - name: redis-container
+        image: redis:7.4.12-alpine3.21
+
+        resources:
+          requests:
+            cpu: 100m
+            memory: 100Mi
+          limits:
+            cpu: 100m
+            memory: 100Mi
+            
+        ports:
+        - containerPort: 6379
+
+
+# kubectl get deployment -n keda-redis-ns
+NAME               READY   UP-TO-DATE   AVAILABLE   AGE
+redis-deployment   1/1     1            1           4m51s
+
+
+# kubectl get pods -n keda-redis-ns
+NAME                               READY   STATUS    RESTARTS   AGE
+redis-deployment-78d45d49c-bsrzc   1/1     Running   0          5m24s
+
+-----------------------------------------------------------------------------------------------------------------------------
+
+3. Create Redis Service
+
+- We create a Service so other Pods can reliably communicate with Redis.
+
+* What happens if we don't create a Service?
+  - Your Redis Deployment creates a Pod.
+  - That Pod gets an IP address, for example: Redis Pod IP: 10.244.0.15  
+  - Another Pod (our worker) can connect directly to that IP.
+  - But there's a problem:
+      * If the Redis Pod gets deleted or restarted, Kubernetes may assign it a different IP.
+      * The worker would still be trying to connect to the old IP.
+  - Hence we create a Redis Service which provides a stable endpoint and IP, forwards traffic to the matching Redis Pod.
+
+
+redis-svc.yaml
+
+apiVersion: v1
+kind: Service
+
+metadata:
+  name: redis-svc
+  namespace: keda-redis-ns
+
+spec:
+  type: ClusterIP
+
+  selector:
+    app: redis
+
+  ports:
+  - port: 6379
+    targetPort: 6379
+
+
+# kubectl apply -f redis-svc.yaml
+service/redis-svc created
+
+# kubectl get svc -n keda-redis-ns
+NAME          TYPE          CLUSTER-IP         EXTERNAL-IP     PORT(S)      AGE
+redis-svc     ClusterIP     10.108.182.253     <none>          6379/TCP     11s
+
+-----------------------------------------------------------------------------------------------------------------------------
+
+4. Creation of worker deployment
+
+- Think of our application as an online shopping system. Imagine customers placing orders.
+- Without a worker:
+    * Orders arrive
+    * Orders are stored in a Redis queue.
+    * But nobody processes those orders.
+- Redis is just a queue. It stores messages; it doesn't process them.
+
+With a worker
+- The worker is responsible for processing those messages.
+
+                                    Customers place orders
+                                              |  
+                                              v
+                                          Redis Queue
+                                 Order 101, Order 102, Order 103...
+                                              |
+                                              v
+                                        Worker Deployment
+                                    Processes orders from Redis
+
+Now where does KEDA come in?
+
+|-----------------|---------------|
+| Queue messages  |	Worker Pods   |
+|-----------------|---------------|
+|      0	        |     0         |
+|      5	        |     1         |
+|      20	        |     4         |
+|      50	        |     5         |
+------------------|---------------|
+
+- These are illustrative values, not guaranteed replica counts.
+- KEDA monitors the Redis queue and scales the Worker Deployment according to the queue length.
+- The key distinction:
+      * Redis = stores messages
+      * Worker = processes messages
+      * KEDA = decides how many workers are needed
+- That's why we need the Worker Deployment. It's the actual workload that KEDA will autoscale!
+
+
+* Can't KEDA's Redis scaler itself process the messages? Why do we need a separate Worker Deployment? NOOOO
+
+KEDA Scaler vs Worker
+  1. KEDA Redis Scaler
+    - Connects to Redis.
+    - Checks the number of messages in the queue.
+    - Exposes that metric to the HPA.
+    - Helps determine how many worker Pods are needed.
+
+  2. Worker Deployment
+    - Contains your actual application code.
+    - Connects to Redis.
+    - Fetches messages.
+    - Processes orders, sends emails, generates reports, etc.
+
+
+worker-deployment.yaml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker-deployment
+  namespace: keda-redis-ns
+
+spec:
+  replicas: 0
+
+  selector:
+    matchLabels:
+      app: worker
+
+  template:
+    metadata:
+      labels:
+        app: worker
+
+    spec:
+      containers:
+        - name: worker-container
+          image: redis:7.4.12-alpine3.21
+
+          command:
+            - sh
+            - -c
+            - |
+              while true; do
+                ITEM=$(redis-cli -h redis-svc LPOP jobs)
+
+                if [ "$ITEM" != "(nil)" ] && [ -n "$ITEM" ]; then
+                  echo "Processing: $ITEM"
+                  sleep 10
+                else
+                  sleep 2
+                fi
+              done
+
+Key points:
+  - replicas: 0 : KEDA will scale workers when messages arrive.
+  - redis-cli : connects to Redis.
+  - LPOP jobs : retrieves and removes a message from the queue.
+  - sleep 10 : simulates processing a message
+
+
+# kubectl apply -f worker-deployment.yaml
+deployment.apps/worker-deployment created
+
+
+# kubectl get deployment -n keda-redis-ns
+NAME                READY   UP-TO-DATE   AVAILABLE   AGE
+redis-deployment    1/1     1            1           92m
+worker-deployment   0/0     0            0           6m26s
+
+
+# kubectl get deployments,pods,svc -n keda-redis-ns
+NAME                                READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/redis-deployment    1/1     1            1           102m
+deployment.apps/worker-deployment   0/0     0            0           16m
+
+NAME                                   READY   STATUS    RESTARTS   AGE
+pod/redis-deployment-78d45d49c-bsrzc   1/1     Running   0          102m
+
+NAME                TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)    AGE
+service/redis-svc   ClusterIP   10.108.182.253   <none>        6379/TCP   87m
+
+-----------------------------------------------------------------------------------------------------------------------------
+
+5. Create scaled object
+
+redis-scaledobject.yaml
+
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+
+metadata:
+  name: redis-worker-scaler
+  namespace: keda-redis-ns
+
+spec:
+  scaleTargetRef:
+    name: worker-deployment
+
+  pollingInterval: 10
+  cooldownPeriod: 30
+
+  minReplicaCount: 0
+  maxReplicaCount: 5
+
+  triggers:
+    - type: redis
+      metadata:
+        address: redis-svc.keda-redis-ns.svc.cluster.local:6379
+        listName: jobs
+        listLength: "5"
+
+# <service-name>.<namespace>.svc.cluster.local:<port>
+# redis-svc.keda-redis-ns.svc.cluster.local:6379
+
+
+# kubectl apply -f redis-scaledobject.yaml
+scaledobject.keda.sh/redis-worker-scaler created
+
+
+# kubectl get scaledobject -n keda-redis-ns
+NAME                  SCALETARGETKIND      SCALETARGETNAME     MIN   MAX   READY   ACTIVE   FALLBACK   PAUSED   TRIGGERS   AUTHENTICATIONS   AGE
+redis-worker-scaler   apps/v1.Deployment   worker-deployment   0     5     True    False    False      False    redis                        109s
+
+
+# kubectl describe scaledobject redis-worker-scaler -n keda-redis-ns                                                                                  
+Name:         redis-worker-scaler
+Namespace:    keda-redis-ns
+Labels:       scaledobject.keda.sh/name=redis-worker-scaler
+Annotations:  <none>
+API Version:  keda.sh/v1alpha1
+Kind:         ScaledObject
+Events:
+  Type    Reason              Age    From           Message
+  ----    ------              ----   ----           -------
+  Normal  KEDAScalersStarted  2m40s  keda-operator  Scaler redis is built
+  Normal  KEDAScalersStarted  2m40s  keda-operator  Started scalers watch
+  Normal  ScaledObjectReady   2m40s  keda-operator  ScaledObject is ready for scaling
+
+
+** Check the automatically generated HPA **
+# kubectl get hpa -n keda-redis-ns
+NAME                           REFERENCE                      TARGETS             MINPODS   MAXPODS   REPLICAS   AGE
+keda-hpa-redis-worker-scaler   Deployment/worker-deployment   <unknown>/5 (avg)   1         5         0          5m37s
+
+-----------------------------------------------------------------------------------------------------------------------------
+
+** Let's test the actual queue now **
+# kubectl exec -n keda-redis-ns deploy/redis-deployment -- redis-cli LPUSH jobs job{1..20}
+20
+
+# kubectl exec -n keda-redis-ns deploy/redis-deployment -- redis-cli LLEN jobs
+20
+
