@@ -1,0 +1,109 @@
+(*) First lets understand the problem Karpenter solves
+
+- Imagine your company runs an application on an Amazon EKS cluster
+- Your cluster currently has:
+    * 2 worker nodes (EC2 instances)
+    * Each node has 4 CPUs and 8 GB RAM
+    * Your application runs 4 pods
+    * Each pod requests 1 CPU and 2 GB RAM
+
+                                               Your Kubernetes cluster
+            
+              -----------------------------                                   -----------------------------             
+              |  Worker Node 1 (Running)  |                                   |  Worker Node 2 (Running)  |
+              |    4 CPU     8 GB RAM     |                                   |    4 CPU     8 GB RAM     |
+              |---------------------------|                                   |---------------------------|
+              |      Pod A – 1 CPU        |                                   |      Pod C – 1 CPU        |
+              |      Pod B – 1 CPU        |                                   |      Pod D – 1 CPU        |
+              |     2 CPU available       |                                   |     2 CPU available       |
+              -----------------------------                                   -----------------------------
+    Simplified example: actual scheduling also considers memory, Pod overhead, system reservations and other constraints.
+
+- Now imagine traffic increases. Your Horizontal Pod Autoscaler (HPA) detects increased CPU usage and increases the application replicas from 4 to 8.
+- So Kubernetes now needs to run 4 additional pods.
+
+* But here's the problem:
+What if the two existing worker nodes don't have enough available resources to run those new pods?
+  - The new pods cannot be scheduled. They remain in the Pending state.
+  - This is the problem we need to solve.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Why isn't HPA enough?
+
+- This is an important interview question.
+- Remember these two responsibilities:
+
+---------------------|-----------------------------------------------------------|
+|    Component	     |            Responsibility                                 |
+|--------------------|-----------------------------------------------------------|
+|      HPA	         |   Increases or decreases the number of application pods   |
+|  Node autoscaling	 |   Increases or decreases the number of worker nodes       |
+----------------------------------------------------------------------------------
+
+- HPA can request 10 Pods, but it cannot create additional EC2 instances to provide more computing capacity.
+- For example:
+    * HPA increases replicas from 4 to 10
+    * Kubernetes tries to schedule the additional pods
+    * Existing nodes don't have enough resources
+    * Some Pods remain Pending
+    * We need additional worker nodes
+- This is where node autoscaling solutions come into the picture.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) How did companies solve this problem before Karpenter?
+  - Before Karpenter became popular, many EKS clusters used two things:
+      1. Amazon EC2 Auto Scaling Group (ASG)
+      2. Kubernetes Cluster Autoscaler (CA)
+
+
+1. Amazon EC2 Auto Scaling Group (ASG)
+  - For Kubernetes, we use EC2 instances as worker nodes.
+  - For example:
+        EC2 instance 1 → Kubernetes Worker Node 1
+        EC2 instance 2 → Kubernetes Worker Node 2
+        EC2 instance 3 → Kubernetes Worker Node 3
+  - These instances provide CPU, memory and other resources to run our Pods.
+  - Imagine you have configured an application that needs 2 EC2 instances initially.
+  - But during peak traffic, you might need 5 instances.
+  - Instead of manually creating EC2 instances, AWS provides something called an Auto Scaling Group.
+  - An ASG manages a group of EC2 instances and maintains the desired number of instances.
+  - Important: ASG understands EC2 instances. It does not understand Kubernetes Pods or their scheduling requirements.
+
+
+2. Kubernetes Cluster Autoscaler (CA)
+  - ASG can create EC2 instances, but who tells ASG when Kubernetes needs another worker node?
+  - That's where Cluster Autoscaler comes in.
+  - Cluster Autoscaler is a Kubernetes cluster component that monitors whether pods can be scheduled onto the available worker nodes.
+  - If Pods cannot be scheduled because of insufficient resources, it can request additional capacity from a suitable configured node group.
+  - Think of it this way:
+        * Cluster Autoscaler understands Kubernetes Pods and nodes
+        * ASG understands EC2 instances
+        * Cluster Autoscaler requests a capacity change
+        * ASG launches the EC2 instance
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Traditional node autoscaling workflow
+
+                                                      New Pods become Pending
+                                             Existing nodes don't have sufficient resources
+                                                                 |
+                                                                 v
+                                                Cluster Autoscaler detects the problem
+                                      Checks whether a configured node group can accommodate the Pods
+                                                                 |
+                                                                 v
+                                                     ASG increases desired capacity
+                                                     Requests another EC2 instance
+                                                                 |
+                                                                 v
+                                                    AWS launches a new EC2 instance
+                                           The instance joins the EKS cluster as a worker node
+                                                                 |
+                                                                 v
+                                                  Kubernetes schedules the Pending Pods
+                                                          Workload running
+
+- Cluster Autoscaler doesn't directly create EC2 instances. It works with the configured node groups, whose ASGs manage the actual EC2 instances.
