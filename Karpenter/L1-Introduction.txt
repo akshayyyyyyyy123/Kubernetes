@@ -59,29 +59,37 @@ What if the two existing worker nodes don't have enough available resources to r
 
 
 1. Amazon EC2 Auto Scaling Group (ASG)
-  - For Kubernetes, we use EC2 instances as worker nodes.
-  - For example:
-        EC2 instance 1 → Kubernetes Worker Node 1
-        EC2 instance 2 → Kubernetes Worker Node 2
-        EC2 instance 3 → Kubernetes Worker Node 3
-  - These instances provide CPU, memory and other resources to run our Pods.
-  - Imagine you have configured an application that needs 2 EC2 instances initially.
-  - But during peak traffic, you might need 5 instances.
-  - Instead of manually creating EC2 instances, AWS provides something called an Auto Scaling Group.
-  - An ASG manages a group of EC2 instances and maintains the desired number of instances.
-  - Important: ASG understands EC2 instances. It does not understand Kubernetes Pods or their scheduling requirements.
+   - An Amazon EC2 Auto Scaling Group is an AWS service feature that automatically maintains a specified number of EC2 instances based on minimum, desired and maximum capacity settings.
+   - For example, imagine an ASG configured as follows:
+
+-----------------|---------|----------------------------------------|
+Configuration	  |  Value	|               Meaning                  |
+-----------------|---------|----------------------------------------|
+Minimum capacity |	 2	   |   Maintain at least 2 EC2 instances    |
+Desired capacity |    3	   |   Currently maintain 3 EC2 instances   |
+Maximum capacity |	 6	   |   Allow up to 6 EC2 instances          |
+-----------------|---------|----------------------------------------|
+
+   - If the desired capacity increases from 3 to 5, ASG launches 2 additional EC2 instances.
+   - Important: ASG manages EC2 instances, but it does not directly understand Kubernetes Pods or their scheduling requirements.
 
 
 2. Kubernetes Cluster Autoscaler (CA)
-  - ASG can create EC2 instances, but who tells ASG when Kubernetes needs another worker node?
-  - That's where Cluster Autoscaler comes in.
-  - Cluster Autoscaler is a Kubernetes cluster component that monitors whether pods can be scheduled onto the available worker nodes.
-  - If Pods cannot be scheduled because of insufficient resources, it can request additional capacity from a suitable configured node group.
-  - Think of it this way:
-        * Cluster Autoscaler understands Kubernetes Pods and nodes
-        * ASG understands EC2 instances
-        * Cluster Autoscaler requests a capacity change
-        * ASG launches the EC2 instance
+   - Cluster Autoscaler is a Kubernetes component that automatically increases or decreases the number of worker nodes based on the resource requirements of Kubernetes Pods.
+   - In AWS EKS, Cluster Autoscaler typically works with EC2 Auto Scaling Groups to manage worker node capacity.
+   - Suppose your EKS cluster has:
+         * 2 worker nodes
+         * 5 application Pods running
+         * HPA increases replicas from 5 to 10
+         * Existing worker nodes don't have enough CPU or memory for all the new Pods
+   - What happens?
+         * Kubernetes scheduler tries to place the new Pods onto existing nodes
+         * Some Pods remain Pending because there are insufficient resources
+         * Cluster Autoscaler identifies these unschedulable Pods
+         * It determines whether an existing configured node group can accommodate them
+         * Cluster Autoscaler requests an increase in that node group's ASG desired capacity.
+         * ASG launches additional EC2 instances.
+         * Once those instances join the EKS cluster and become Ready, Kubernetes schedules the Pending Pods.
 
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -107,3 +115,76 @@ What if the two existing worker nodes don't have enough available resources to r
                                                           Workload running
 
 - Cluster Autoscaler doesn't directly create EC2 instances. It works with the configured node groups, whose ASGs manage the actual EC2 instances.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) How ASG and Cluster Autoscaler work together
+
+
+                                                      New Pods become Pending
+                                             Existing nodes don't have sufficient resources
+                                                                 |
+                                                                 v
+                                                Cluster Autoscaler detects the problem
+                                      Checks whether a configured node group can accommodate the Pods
+                                                                 |
+                                                                 v
+                                                     ASG increases desired capacity
+                                                     Requests another EC2 instance
+                                                                 |
+                                                                 v
+                                                    AWS launches a new EC2 instance
+                                           The instance joins the EKS cluster as a worker node
+                                                                 |
+                                                                 v
+                                                  Kubernetes schedules the Pending Pods
+                                                          Workload running
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Difference between ASG and Cluster Autoscaler
+
+-------------------------------|-------------------------|------------------------------------------------------|
+Feature	                      |     ASG	               |         Cluster Autoscaler                           |
+-------------------------------|-------------------------|------------------------------------------------------|
+Belongs to	                   |     AWS	               |      Kubernetes ecosystem                            |
+Manages	                      |  EC2 instances	         |   Kubernetes worker node capacity                    |
+Understands Pod requirements?	 |      No	               |              Yes                                     |
+Directly launches EC2?	       |     Yes	               |               No                                     |
+Main responsibility	          |  Maintain EC2 capacity	|   Decide when configured node groups should scale    |
+-------------------------------|-------------------------|------------------------------------------------------|
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Why wasn't Cluster Autoscaler enough?
+
+- Cluster Autoscaler works well, but the traditional approach has limitations.
+- Example: Imagine your company has three types of workloads:
+      * Backend applications need general-purpose instances.
+      * Redis needs memory-optimized instances.
+      * ML applications need GPU instances.
+- Your DevOps team might maintain three separate EKS node groups backed by ASGs.
+- Cluster Autoscaler can scale these configured node groups, but it cannot automatically create an entirely new node group whenever a different EC2 instance 
+type is required.
+- This introduces additional node-group configuration and maintenance overhead.
+- Karpenter addresses this by provisioning suitable EC2 instances directly based on Pod requirements and administrator-defined constraints, without requiring a pre-created ASG-backed node group for every instance choice.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Interview-ready answer
+
+- Before Karpenter, EKS clusters commonly used Kubernetes Cluster Autoscaler along with AWS Auto Scaling Groups to scale worker nodes.
+
+- An ASG is an AWS feature that maintains EC2 instance capacity based on minimum, desired and maximum settings.
+
+- Cluster Autoscaler is a Kubernetes component that monitors unschedulable Pods and determines whether additional worker nodes are required.
+
+- When Pods cannot be scheduled due to insufficient resources, Cluster Autoscaler increases the desired capacity of a suitable configured ASG. AWS launches additional EC2 instances, which join the EKS cluster as worker nodes. Kubernetes then schedules the Pending Pods.
+
+- One limitation is that Cluster Autoscaler primarily works with preconfigured node groups, whereas Karpenter can dynamically select and provision suitable EC2 instance types based on workload requirements.
+
+- HPA: Scales the number of Pods.
+- Cluster Autoscaler: Scales worker node capacity through configured node groups.
+- ASG: Actually launches or terminates the EC2 instances in the traditional AWS setup.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
