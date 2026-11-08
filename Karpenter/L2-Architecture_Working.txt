@@ -1,0 +1,77 @@
+Karpenter – Architecture and working
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) What is Karpenter?
+  - Karpenter is an open-source Kubernetes node autoscaler that automatically provisions and manages worker nodes based on the resource requirements and 
+scheduling constraints of Kubernetes workloads.
+  - In AWS EKS, Karpenter can directly provision suitable EC2 instances without requiring preconfigured Auto Scaling Groups for those nodes.
+
+  - Simple example; Suppose,
+      * Your EKS cluster has 3 worker nodes.
+      * HPA increases an application's replicas from 5 to 12.
+      * Existing nodes don't have sufficient CPU or memory.
+      * - Some new Pods remain Pending.
+  - With Cluster Autoscaler: It identifies a suitable existing node group and requests more instances through its ASG.
+  - With Karpenter: It evaluates the Pending Pods, identifies suitable EC2 capacity and provisions new worker nodes using AWS APIs.
+  - Karpenter does not replace the Kubernetes scheduler. Once the new nodes become available, the scheduler places the Pods.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Karpenter's three important resources
+
+- These are Kubernetes Custom Resource Definitions (CRDs), which means Karpenter extends the Kubernetes API with its own resource types.
+- Karpenter introduces three custom Kubernetes resources. These are the most important ones to understand for interviews.
+
+- Components of Karpenter:
+  i)   NodePool
+  ii)  EC2NodeClass
+  iii) NodeClaim
+
+  i. NodePool
+      - Defines which types of worker nodes Karpenter is allowed to create.
+      - Example: Linux, AMD64, On-Demand or Spot, permitted instance families.
+
+  ii. EC2NodeClass
+      - Defines the AWS-specific configuration for those EC2 instances.
+      - Example: AMI, subnets, security groups, IAM role
+
+  iii. NodeClaim
+      - Represents a specific node that Karpenter intends to provision and manages throughout its lifecycle.
+      - Example: A request to provision one suitable EC2 instance
+
+  iv. EC2 worker node
+      - The actual instance that joins the EKS cluster and runs Pods.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) How Karpenter works internally
+
+i.   Pod becomes Pending: Kubernetes cannot schedule it due to insufficient compatible node capacity.
+ii.  Karpenter detects demand: Its controller examines the unschedulable Pod's CPU, memory, affinity, tolerations and other requirements.
+iii. NodePool is evaluated: Karpenter checks which configured NodePools permit the required capacity.
+iv.  EC2NodeClass is referenced: Karpenter determines the AWS-specific configuration needed to launch the node.
+v.   NodeClaim is created: Karpenter creates a resource representing the planned node.
+vi.  EC2 is provisioned: Karpenter requests suitable capacity from AWS.
+vii. Node joins EKS: Once the node registers and becomes Ready, the Kubernetes scheduler can place the Pending Pod on it.
+
+Karpenter may also group multiple Pending Pods together when determining how much node capacity to provision.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*)Does Karpenter only scale up?
+
+- No. Karpenter also manages node scale-down.
+- For example, imagine traffic decreases and HPA reduces application replicas from 15 to 5.
+- Now several worker nodes may be empty or underutilized.
+- Karpenter can perform consolidation: removing unnecessary nodes or replacing nodes with a more efficient arrangement to reduce infrastructure cost.
+- It uses disruption controls and graceful Pod eviction to manage these changes.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Summary
+
+Karpenter is a Kubernetes node autoscaler that provisions EC2 worker nodes based on the scheduling requirements of Pods. It uses NodePools to define
+allowed compute capacity, EC2NodeClasses for AWS-specific configurations, and NodeClaims to manage individual node provisioning and lifecycle. 
+Unlike traditional Cluster Autoscaler setups, Karpenter does not require predefined ASG-backed node groups for every capacity choice. It also supports node
+consolidation to optimize infrastructure costs.
