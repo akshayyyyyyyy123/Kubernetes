@@ -1,0 +1,60 @@
+Drawbacks of Kubernetes Cluster Autoscaler (CA)
+- Cluster Autoscaler is effective for scaling Kubernetes worker nodes, but it has certain limitations compared to Karpenter, especially in AWS EKS.
+
+1. Dependency on predefined node groups
+2. More node group management
+3. Less flexible instance selection
+4. Potentially slower scaling
+5. Less flexible node consolidation
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+1. Dependency on predefined node groups
+  - Cluster Autoscaler primarily scales existing node groups backed by Auto Scaling Groups (ASGs).
+  - Example: If you have configured a node group using m5.large instances, Cluster Autoscaler cannot independently launch an r6i.large instance unless an 
+appropriate node group is already configured.
+  - Drawback: Less flexibility in dynamically selecting EC2 instance types.
+
+
+2. More node group management
+  - Different workloads may require different EC2 instance types.
+  - For example:
+      * Backend application → General-purpose instances
+      * Redis → Memory-optimized instances
+      * ML workloads → GPU instances
+  - With traditional Cluster Autoscaler setups, DevOps engineers may need to configure and maintain multiple node groups.
+  - Drawback: Increased infrastructure configuration and maintenance overhead.
+
+
+3. Less flexible instance selection
+  - Cluster Autoscaler selects suitable configured node groups rather than independently choosing the best EC2 instance for each workload.
+  - Drawback: It may be harder to optimize instance selection for cost, availability and resource utilization.
+
+
+4. Potentially slower scaling
+  - Cluster Autoscaler evaluates configured node groups and requests capacity changes through their ASGs.
+  - Karpenter can evaluate Pending Pods and provision suitable EC2 capacity directly.
+  - Drawback: Traditional CA-based scaling can be slower in some environments, although actual provisioning time depends on AWS capacity, instance startup and 
+configuration.
+
+
+5. Less flexible node consolidation
+  - Cluster Autoscaler can remove underutilized nodes when their Pods can be safely moved elsewhere.
+  - However, it does not provide the same workload-aware node replacement and consolidation capabilities as Karpenter.
+  - Drawback: Opportunities for cost optimization may be more limited.
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) Cluster Autoscaler vs Karpenter
+
+------------------------------------|-------------------------------------------------------------------|
+    Drawback of CA	                |              How Karpenter addresses it                           |
+------------------------------------|-------------------------------------------------------------------|
+Relies on configured node groups	  |      Provisions nodes without predefined ASG-backed node groups   |
+More node group management	        |      Uses flexible NodePool configurations                        |
+Limited instance selection	        |      Selects from suitable permitted EC2 instance types           |
+Scaling can be slower	              |      Can provision capacity directly through AWS APIs             |
+Less flexible consolidation	        |      Supports node consolidation and replacement                  |
+--------------------------------------------------------------------------------------------------------|
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
