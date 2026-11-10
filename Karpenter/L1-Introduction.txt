@@ -188,3 +188,20 @@ type is required.
 - ASG: Actually launches or terminates the EC2 instances in the traditional AWS setup.
 
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+(*) WHy learn Karpenter?
+It is used by the organisations operating K8s at a massive scale, including the teams like JioHotstar.
+
+i) Industry Adoption: 
+      Used by many enterprises operating K8s at a massive scale.
+
+ii) AWS EKS Standard:
+      Default recommended autoscaler for Amazon EKS Clusters.
+
+iii) Faster than CA:   
+      Provisions the worker nodes in under 60s, whereas the cluster autoscaler would take around 3 to 5 mins.
+
+iv) Saves Cost:
+      Intelligent instance selection and consolidation reduce spend.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
