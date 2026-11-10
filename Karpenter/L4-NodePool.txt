@@ -1,0 +1,37 @@
+1. NodePool
+
+  - A NodePool is a Karpenter custom Kubernetes resource that defines the requirements, constraints and lifecycle policies for worker nodes that Karpenter
+can provision.
+  - In simple words, "NodePool tells Karpenter what kinds of EC2 instances it is allowed to create."
+  - For example, imagine your DevOps team wants Karpenter to provision only:
+      * Linux-based worker nodes
+      * AMD64 architecture instances
+      * EC2 instances from the m and c families
+      * On-Demand instances rather than Spot instances
+  - Instead of manually creating an ASG for every instance type, you can define these requirements in a NodePool.
+  - Karpenter then selects suitable instances that satisfy both the Pod requirements and the NodePool constraints.
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+2. Why do we need a NodePool?
+
+  - Imagine Karpenter detects a Pending Pod requesting 2 CPUs and 4 GiB of memory.
+  - Karpenter needs to know what types of EC2 instances your company allows it to launch.
+  - Let's understand with an example. Suppose your application has a Pending Pod requesting: CPU: 2 vCPUs and Memory: 4 GiB
+  - AWS offers many EC2 instance options.
+
+i. Different types of EC2 instances
+
+------------------------------------------------------------------------------------
+    Instance type	              Purpose	                           Example
+------------------------------------------------------------------------------------
+  General-purpose	      Balanced CPU and memory	                  m6i.large
+  Compute-optimized	    More CPU relative to memory	              c6i.large
+  Memory-optimized	    More RAM relative to CPU	                r6i.large
+      GPU	              Workloads requiring GPU acceleration	    g5.xlarge
+------------------------------------------------------------------------------------
+
+- Karpenter needs to select an instance that can accommodate the Pod.
+- But your company might have specific requirements.
+- For example, your DevOps team might say: "We don't want expensive GPU instances for normal backend applications. Only use general-purpose or compute-optimized
+instances."
